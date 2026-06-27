@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Coding Bootcamp</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- ── Login Modal ───────────────────────────────────── -->
+<div id="login-modal" class="modal-backdrop">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-logo">🎓</div>
+      <div class="modal-title">Coding Bootcamp</div>
+      <div class="modal-sub">Sign in to track your progress</div>
+    </div>
+    <div class="modal-tabs">
+      <button class="modal-tab active" id="tab-login"    onclick="setAuthTab('login')">Sign In</button>
+      <button class="modal-tab"        id="tab-register" onclick="setAuthTab('register')">Register</button>
+    </div>
+    <div class="modal-body">
+      <label class="modal-label">Username</label>
+      <input id="auth-username" class="modal-input" type="text"
+             placeholder="your name" autocomplete="off" maxlength="32"
+             onkeydown="if(event.key==='Enter') submitAuth()">
+      <label class="modal-label">PIN</label>
+      <input id="auth-pin" class="modal-input" type="password"
+             placeholder="4–6 digits" maxlength="6" inputmode="numeric"
+             onkeydown="if(event.key==='Enter') submitAuth()">
+      <div id="auth-error" class="auth-error hidden"></div>
+      <button class="btn-primary modal-btn" id="auth-submit" onclick="submitAuth()">Sign In</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── App ───────────────────────────────────────────── -->
+<div id="app">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-top">
+
+      <!-- Brand (populated by JS) -->
+      <div class="brand">
+        <div id="brand-icon" class="brand-icon">🎓</div>
+        <div class="brand-text">
+          <div id="brand-title" class="brand-title">Bootcamp</div>
+          <div id="brand-cmd"   class="brand-cmd">loading…</div>
+        </div>
+      </div>
+
+      <!-- Language switcher (populated by JS) -->
+      <div id="lang-switcher" class="lang-switcher"></div>
+
+      <!-- Progress -->
+      <div class="progress-section">
+        <div class="progress-bar">
+          <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+        </div>
+        <div class="progress-label" id="progress-label">0 / 0 complete</div>
+      </div>
+
+    </div>
+
+    <!-- Topic list -->
+    <nav class="topic-nav">
+      <div class="sidebar-section-label">Fundamentals</div>
+      <ul id="topic-list"></ul>
+    </nav>
+
+    <!-- Advanced tracks -->
+    <nav class="topic-nav track-nav">
+      <div class="sidebar-section-label">Advanced Tracks</div>
+      <div id="track-list"></div>
+    </nav>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <span class="header-badge" id="header-badge">Topic 1</span>
+        <h1 class="header-title" id="header-title">—</h1>
+      </div>
+
+      <div class="header-right">
+        <!-- User chip -->
+        <div class="user-chip">
+          <span id="username-display" class="username-display"></span>
+          <button class="sign-out-btn" onclick="logout()" title="Sign out">↩ out</button>
+        </div>
+
+        <!-- Mark complete -->
+        <button id="complete-btn" class="complete-btn" onclick="toggleComplete()">
+          <span id="complete-icon">○</span>
+          <span id="complete-label">Mark complete</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" data-tab="lesson"    onclick="switchTab('lesson')">📚 Lesson</button>
+      <button class="tab"        data-tab="challenge" onclick="switchTab('challenge')">💻 Challenge</button>
+      <button class="tab"        data-tab="chat"      onclick="switchTab('chat')">💬 Ask</button>
+    </div>
+
+    <!-- Panel container -->
+    <div class="panels">
+
+      <!-- ── Lesson panel ── -->
+      <div class="panel active" id="panel-lesson">
+        <div class="panel-body">
+
+          <div class="empty" id="lesson-empty">
+            <div class="empty-icon">📚</div>
+            <div class="empty-title">Ready to learn?</div>
+            <div class="empty-sub">Load the lesson to get started with this topic.</div>
+            <button class="btn-primary" onclick="loadLesson()">Get Lesson</button>
+          </div>
+
+          <div class="md-output hidden" id="lesson-output"></div>
+
+        </div>
+        <div class="panel-footer hidden" id="lesson-footer">
+          <button class="btn-ghost" onclick="loadLesson(true)">↺ Regenerate</button>
+          <button class="btn-primary" onclick="switchTab('challenge')">Try Challenge →</button>
+        </div>
+      </div>
+
+      <!-- ── Challenge panel ── -->
+      <div class="panel hidden" id="panel-challenge">
+        <div class="challenge-grid">
+
+          <!-- Left: challenge description -->
+          <div class="challenge-desc">
+
+            <div class="empty" id="challenge-empty">
+              <div class="empty-icon">💻</div>
+              <div class="empty-title">Ready to code?</div>
+              <div class="empty-sub">Load a challenge to put your skills to the test.</div>
+              <button class="btn-primary" onclick="loadChallenge()">Get Challenge</button>
+            </div>
+
+            <div class="challenge-inner hidden" id="challenge-inner">
+              <div class="challenge-bar">
+                <button class="btn-ghost" onclick="loadChallenge()">↺ New</button>
+              </div>
+              <div class="md-output" id="challenge-output"></div>
+            </div>
+
+          </div>
+
+          <!-- Right: code editor -->
+          <div class="editor-col">
+            <div class="editor-chrome">
+              <div class="editor-dots">
+                <span class="dot dot-red"></span>
+                <span class="dot dot-yellow"></span>
+                <span class="dot dot-green"></span>
+              </div>
+              <span class="editor-label">solution</span>
+            </div>
+            <textarea id="code-editor" class="code-editor"
+                      placeholder="// Write your solution here…"
+                      oninput="autoResize(this)"
+                      spellcheck="false"></textarea>
+            <div class="editor-actions">
+              <button class="btn-ghost"      onclick="clearEditor()">Clear</button>
+              <button class="btn-secondary"  onclick="getHint()">💡 Hint</button>
+              <button class="btn-primary"    onclick="submitCode()">Submit ↵</button>
+            </div>
+
+            <!-- Eval panel (inside right column) -->
+            <div class="eval-panel hidden" id="eval-panel">
+              <div class="eval-header">
+                <span class="eval-title">Feedback</span>
+                <button class="btn-ghost" onclick="closeEval()">✕</button>
+              </div>
+              <div class="md-output" id="eval-output"></div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Chat panel ── -->
+      <div class="panel hidden" id="panel-chat">
+        <div class="chat-messages" id="chat-messages">
+          <div class="chat-intro">
+            <span class="chat-intro-icon" id="chat-intro-icon">🎓</span>
+            <div class="chat-intro-text">
+              <strong>Ask me anything about <span id="chat-topic-name">this topic</span></strong>
+              <p>I'm here to help — ask about concepts, errors, examples, or anything else.</p>
+            </div>
+          </div>
+        </div>
+        <div class="chat-input-bar">
+          <textarea id="chat-input" class="chat-input"
+                    placeholder="Ask a question…"
+                    rows="1"
+                    onkeydown="onChatKey(event)"
+                    oninput="autoResize(this)"
+                    spellcheck="false"></textarea>
+          <button class="btn-primary chat-send" onclick="sendChat()">Send</button>
+        </div>
+      </div>
+
+    </div><!-- /panels -->
+  </main>
+</div><!-- /app -->
+
+<!-- ── Toast ──────────────────────────────────────────── -->
+<div id="toast" class="toast hidden"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/go.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
