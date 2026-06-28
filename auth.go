@@ -17,6 +17,15 @@ const (
 	sessionsFile = "data/sessions.json"
 )
 
+// ── DEV LOGIN BYPASS ──────────────────────────────────
+// For testing only: when devAutoLogin is true, every request is treated as
+// coming from devUser, so the login screen is skipped entirely. Flip this back
+// to false (or comment out the block in getSessionUser) before real use.
+const (
+	devAutoLogin = true
+	devUser      = "tester"
+)
+
 // ── Users ─────────────────────────────────────────────
 
 type UserRecord struct {
@@ -78,6 +87,12 @@ func saveSessions() {
 }
 
 func getSessionUser(r *http.Request) (string, bool) {
+	// DEV LOGIN BYPASS — see the devAutoLogin const above. Comment out this
+	// block to restore the normal cookie-based login.
+	if devAutoLogin {
+		return devUser, true
+	}
+
 	c, err := r.Cookie("session")
 	if err != nil {
 		return "", false

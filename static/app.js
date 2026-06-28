@@ -189,7 +189,10 @@ async function streamFetch(url, body, onChunk, onDone) {
         try {
           const parsed = JSON.parse(raw);
           if (parsed.error) {
-            onChunk('\n\n**Error**: ' + parsed.error, parsed.error);
+            // Fold the error into the accumulated text so the final onDone
+            // render shows it instead of overwriting it with empty content.
+            accumulated += '\n\n**Error**: ' + parsed.error;
+            onChunk('\n\n**Error**: ' + parsed.error, accumulated);
             S.streaming = false; onDone(accumulated); return;
           }
           if (parsed.text) {
@@ -200,7 +203,8 @@ async function streamFetch(url, body, onChunk, onDone) {
       }
     }
   } catch (err) {
-    onChunk('\n\n**Network error**: ' + err.message, err.message);
+    accumulated += '\n\n**Network error**: ' + err.message;
+    onChunk('\n\n**Network error**: ' + err.message, accumulated);
   }
   S.streaming = false;
   onDone(accumulated);

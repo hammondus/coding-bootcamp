@@ -64,6 +64,10 @@ func streamFromAnthropic(ctx context.Context, w http.ResponseWriter, system, pro
 		return
 	}
 	sendErr := func(msg string) {
+		// Log server-side too: otherwise failures like a missing API key are
+		// only visible as an SSE event in the browser and leave the console
+		// silent, which makes them hard to diagnose.
+		log.Printf("stream error: %s", msg)
 		data, _ := json.Marshal(map[string]string{"error": msg})
 		fmt.Fprintf(w, "data: %s\n\n", data)
 		flusher.Flush()
