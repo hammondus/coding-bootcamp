@@ -18,10 +18,12 @@ func main() {
 		port = "8181"
 	}
 
-	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	// Static assets and index.html are wrapped in noCache so the browser
+	// always picks up the latest files during local development.
+	http.Handle("/static/", noCache(http.StripPrefix("/static/", http.FileServer(http.Dir("static")))))
+	http.Handle("/", noCache(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "static/index.html")
-	})
+	})))
 
 	// Auth — no session required
 	http.HandleFunc("/api/auth/register", handleRegister)

@@ -642,10 +642,6 @@ async function sendChat() {
   );
 }
 
-function onChatKey(e) {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
-}
-
 // ── Mark complete ──────────────────────────────
 async function toggleComplete() {
   if (S.mode === 'track') { await toggleTrackComplete(); return; }

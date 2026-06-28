@@ -730,8 +730,11 @@ textarea, input { font-family: var(--font-mono); }
 .chat-bubble strong { font-weight: 600; }
 .chat-bubble h1, .chat-bubble h2, .chat-bubble h3 { font-family: var(--font-head); margin: 10px 0 6px; }
 
-/* Chat input bar */
-.chat-bar {
+/* Chat input bar
+   NOTE: this selector must match the container class in index.html
+   (<div class="chat-input-bar">). With the wrong name the textarea
+   never gets `flex: 1`, so it collapses to its tiny default width. */
+.chat-input-bar {
   display: flex;
   gap: 10px;
   padding: 12px 24px 16px;
@@ -746,14 +749,14 @@ textarea, input { font-family: var(--font-mono); }
   background: var(--bg3);
   border: 1px solid var(--border2);
   border-radius: 10px;
-  padding: 10px 14px;
+  padding: 12px 14px;
   color: var(--text);
-  font-size: 13.5px;
+  font-size: 14px;
   font-family: var(--font-ui);
   resize: none;
   outline: none;
-  min-height: 42px;
-  max-height: 120px;
+  min-height: 88px;     /* starts as a comfortable multi-line box */
+  max-height: 160px;    /* matches the autoResize() cap in app.js */
   overflow-y: auto;
   transition: border-color 0.15s;
   line-height: 1.5;
@@ -763,14 +766,15 @@ textarea, input { font-family: var(--font-mono); }
 .chat-input::placeholder { color: var(--text3); font-family: var(--font-ui); }
 
 .chat-send {
-  width: 40px;
-  height: 40px;
+  align-self: flex-end;   /* sit at the bottom edge of the taller input */
+  padding: 0 22px;
+  height: 44px;
   border-radius: 10px;
   border: none;
   background: var(--accent);
   color: #fff;
-  font-size: 18px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   display: flex;
   align-items: center;
   justify-content: center;
