@@ -1,0 +1,55 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+)
+
+func jsonErr(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	fmt.Fprintf(w, `{"error":%q}`, msg)
+}
+
+func jsonOK(w http.ResponseWriter, v interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(v)
+}
+
+// decodePOST enforces a POST method and decodes the JSON body into dst. On
+// failure it writes a plain-text error (the content/track endpoints surface
+// errors to the client as SSE/text) and returns false. Centralising this also
+// makes body-decode errors consistent across handlers instead of silently
+// ignored in some and checked in others.
+func decodePOST(w http.ResponseWriter, r *http.Request, dst any) bool {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return false
+	}
+	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return false
+	}
+	return true
+}
+
+// lookupLang resolves a language ID, writing a 400 and returning ok=false when
+// it's unknown.
+func lookupLang(w http.ResponseWriter, id string) (Language, bool) {
+	lang, ok := languages[id]
+	if !ok {
+		http.Error(w, "unknown language", http.StatusBadRequest)
+	}
+	return lang, ok
+}
+
+// lookupTrackLesson resolves a track + lesson within a language, writing a 400
+// and returning ok=false when either is unknown.
+func lookupTrackLesson(w http.ResponseWriter, lang Language, trackID string, lessonID int) (Track, TrackLesson, bool) {
+	track, lesson, ok := findTrackLesson(lang, trackID, lessonID)
+	if !ok {
+		http.Error(w, "unknown track or lesson", http.StatusBadRequest)
+	}
+	return track, lesson, ok
+}

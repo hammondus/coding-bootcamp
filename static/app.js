@@ -57,6 +57,34 @@ function activeCacheKey() {
   return cacheKey(S.activeId);
 }
 
+// ── Mode-aware request helpers ─────────────────
+// These collapse the old fundamentals/track function pairs into one each:
+// the endpoint prefix and body shape are the only things that differed.
+function endpoint(action) {
+  return S.mode === 'track' ? `/api/track/${action}` : `/api/${action}`;
+}
+
+function reqBody(extra = {}) {
+  if (S.mode === 'track') {
+    return { lang: S.lang, track_id: S.activeTrackId, lesson_id: S.activeTrackLesson?.id, ...extra };
+  }
+  const t = activeTopic();
+  return { lang: S.lang, topic_id: t.id, topic_name: t.name, ...extra };
+}
+
+// True when there's a valid selection to act on for the current mode.
+function hasSelection() {
+  return S.mode === 'track' ? !!S.activeTrackLesson : true;
+}
+
+// Pull the last fenced code block out of a challenge to seed the editor.
+function extractStarterCode(markdown) {
+  const blocks = markdown.match(/```[\w]*\s*([\s\S]*?)```/g);
+  if (!blocks) return '';
+  const last = blocks[blocks.length - 1];
+  return last.replace(/```[\w]*\s*/, '').replace(/```$/, '').trim();
+}
+
 // ── marked setup ───────────────────────────────
 if (typeof marked.use === 'function') {
   marked.use({ gfm: true, breaks: true });
@@ -70,6 +98,51 @@ function parseMarkdown(text) {
 function applyHighlight(container) {
   container.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
 }
+
+// ── Zig highlighting ───────────────────────────
+// highlight.js core ships Go but not Zig, so register a compact Zig grammar
+// here (no build step, no extra CDN script). Lessons use ```zig fences, which
+// become <code class="language-zig"> for highlightElement to pick up.
+function registerZigHighlighting() {
+  if (typeof hljs === 'undefined' || hljs.getLanguage('zig')) return;
+  hljs.registerLanguage('zig', function (hl) {
+    return {
+      name: 'Zig',
+      aliases: ['zig'],
+      keywords: {
+        keyword:
+          'const var fn return if else while for switch break continue defer ' +
+          'errdefer try catch orelse unreachable async await suspend resume nosuspend ' +
+          'comptime inline noinline pub usingnamespace test struct enum union opaque ' +
+          'error and or threadlocal export extern packed align linksection callconv ' +
+          'volatile allowzero anyframe asm',
+        type:
+          'i8 u8 i16 u16 i32 u32 i64 u64 i128 u128 isize usize c_short c_ushort c_int ' +
+          'c_uint c_long c_ulong c_longlong c_ulonglong c_longdouble f16 f32 f64 f80 ' +
+          'f128 bool void noreturn type anyerror anytype anyopaque comptime_int comptime_float',
+        literal: 'true false null undefined',
+      },
+      contains: [
+        hl.QUOTE_STRING_MODE,
+        { className: 'string', begin: /'(\\.|[^\\'])'/ },     // char literal
+        { className: 'string', begin: /\\\\/, end: /$/, relevance: 0 }, // multiline string
+        hl.COMMENT('//', '$'),
+        { className: 'built_in', begin: /@[a-zA-Z_]\w*/ },     // @import, @typeOf, ...
+        {
+          className: 'number',
+          variants: [
+            { begin: /\b0x[0-9a-fA-F][0-9a-fA-F_]*(\.[0-9a-fA-F_]+)?([pP][-+]?\d+)?/ },
+            { begin: /\b0o[0-7][0-7_]*/ },
+            { begin: /\b0b[01][01_]*/ },
+            { begin: /\b\d[\d_]*(\.[\d_]+)?([eE][-+]?\d+)?/ },
+          ],
+          relevance: 0,
+        },
+      ],
+    };
+  });
+}
+registerZigHighlighting();
 
 // ── Toast ──────────────────────────────────────
 let toastTimer = null;
@@ -378,9 +451,8 @@ function showLessonContent(html) {
 }
 
 function loadLesson(force = false) {
-  if (S.mode === 'track') { loadTrackLesson(force); return; }
-  if (S.streaming) return;
-  const t = activeTopic();
+  if (S.streaming || !hasSelection()) return;
+  const key = activeCacheKey();
   $('lesson-empty').classList.add('hidden');
   $('lesson-footer').classList.add('hidden');
   const out = $('lesson-output');
@@ -389,15 +461,15 @@ function loadLesson(force = false) {
   out.classList.add('streaming');
 
   streamFetch(
-    '/api/lesson',
-    { lang: S.lang, topic_id: t.id, topic_name: t.name, force },
+    endpoint('lesson'),
+    reqBody({ force }),
     (_, acc) => { out.innerHTML = parseMarkdown(acc); },
     (full) => {
       out.classList.remove('streaming');
       out.innerHTML = parseMarkdown(full);
       applyHighlight(out);
       $('lesson-footer').classList.remove('hidden');
-      S.lessons[cacheKey(t.id)] = out.innerHTML;
+      S.lessons[key] = out.innerHTML;
     }
   );
 }
@@ -420,9 +492,8 @@ function showChallengeContent(html) {
 }
 
 function loadChallenge() {
-  if (S.mode === 'track') { loadTrackChallenge(); return; }
-  if (S.streaming) return;
-  const t = activeTopic();
+  if (S.streaming || !hasSelection()) return;
+  const key = activeCacheKey();
   $('challenge-empty').classList.add('hidden');
   $('challenge-inner').classList.remove('hidden');
   closeEval();
@@ -431,25 +502,20 @@ function loadChallenge() {
   out.classList.add('streaming');
 
   streamFetch(
-    '/api/challenge',
-    { lang: S.lang, topic_id: t.id, topic_name: t.name },
+    endpoint('challenge'),
+    reqBody(),
     (_, acc) => { out.innerHTML = parseMarkdown(acc); },
     (full) => {
       out.classList.remove('streaming');
-      S.challengeRaw[cacheKey(t.id)] = full;
+      S.challengeRaw[key] = full;
       out.innerHTML = parseMarkdown(full);
       applyHighlight(out);
-      S.challenges[cacheKey(t.id)] = out.innerHTML;
+      S.challenges[key] = out.innerHTML;
       // Pre-fill editor with starter code if empty
       const editor = $('code-editor');
       if (!editor.value.trim()) {
-        const match = full.match(/```[\w]*\s*([\s\S]*?)```/g);
-        if (match) {
-          const last = match[match.length - 1];
-          const code = last.replace(/```[\w]*\s*/, '').replace(/```$/, '').trim();
-          editor.value = code;
-          autoResize(editor);
-        }
+        const code = extractStarterCode(full);
+        if (code) { editor.value = code; autoResize(editor); }
       }
     }
   );
@@ -457,12 +523,10 @@ function loadChallenge() {
 
 // ── Submit / Hint / Eval ───────────────────────
 function submitCode() {
-  if (S.mode === 'track') { submitTrackCode(); return; }
-  if (S.streaming) return;
-  const t    = activeTopic();
+  if (S.streaming || !hasSelection()) return;
   const code = $('code-editor').value.trim();
-  const key  = cacheKey(t.id);
-  if (!code)              { showToast('Write some code first!', 'error'); return; }
+  const key  = activeCacheKey();
+  if (!code)                { showToast('Write some code first!', 'error'); return; }
   if (!S.challengeRaw[key]) { showToast('Load a challenge first!', 'error'); return; }
 
   const panel = $('eval-panel');
@@ -472,8 +536,8 @@ function submitCode() {
   out.classList.add('streaming');
 
   streamFetch(
-    '/api/evaluate',
-    { lang: S.lang, topic_id: t.id, topic_name: t.name, code, challenge: S.challengeRaw[key] },
+    endpoint('evaluate'),
+    reqBody({ code, challenge: S.challengeRaw[key] }),
     (_, acc) => { out.innerHTML = parseMarkdown(acc); },
     (full) => {
       out.classList.remove('streaming');
@@ -488,10 +552,8 @@ function submitCode() {
 }
 
 function getHint() {
-  if (S.mode === 'track') { getTrackHint(); return; }
-  if (S.streaming) return;
-  const t   = activeTopic();
-  const key = cacheKey(t.id);
+  if (S.streaming || !hasSelection()) return;
+  const key = activeCacheKey();
   if (!S.challengeRaw[key]) { showToast('Load a challenge first!', 'error'); return; }
 
   const panel = $('eval-panel');
@@ -501,8 +563,8 @@ function getHint() {
   out.classList.add('streaming');
 
   streamFetch(
-    '/api/hint',
-    { lang: S.lang, topic_id: t.id, topic_name: t.name, challenge: S.challengeRaw[key], code: $('code-editor').value },
+    endpoint('hint'),
+    reqBody({ challenge: S.challengeRaw[key], code: $('code-editor').value }),
     (_, acc) => { out.innerHTML = '<p><strong>💡 Hint</strong></p>' + parseMarkdown(acc); },
     (full) => {
       out.classList.remove('streaming');
@@ -545,8 +607,7 @@ function createChatBubble(role, content) {
 }
 
 async function sendChat() {
-  if (S.mode === 'track') { await sendTrackChat(); return; }
-  if (S.streaming) return;
+  if (S.streaming || !hasSelection()) return;
   const input = $('chat-input');
   const text  = input.value.trim();
   if (!text) return;
@@ -567,10 +628,9 @@ async function sendChat() {
   box.appendChild(assistantWrap);
   box.scrollTop = box.scrollHeight;
 
-  const t = activeTopic();
   streamFetch(
-    '/api/chat',
-    { lang: S.lang, topic_id: t.id, topic_name: t.name, messages: history },
+    endpoint('chat'),
+    reqBody({ messages: history }),
     (_, acc) => { assistantBubble.innerHTML = parseMarkdown(acc); box.scrollTop = box.scrollHeight; },
     (full) => {
       assistantBubble.classList.remove('streaming');
@@ -696,7 +756,7 @@ function selectTrackLesson(trackId, lessonId) {
   if (S.lessons[key]) {
     showLessonContent(S.lessons[key]);
   } else if (lesson.lessonCached) {
-    loadTrackLesson();
+    loadLesson();
   } else {
     resetLessonPanel();
   }
@@ -705,147 +765,8 @@ function selectTrackLesson(trackId, lessonId) {
 }
 
 // ── Track content functions ────────────────────
-function trackBody() {
-  return {
-    lang:      S.lang,
-    track_id:  S.activeTrackId,
-    lesson_id: S.activeTrackLesson?.id,
-  };
-}
-
-function loadTrackLesson(force = false) {
-  if (S.streaming || !S.activeTrackLesson) return;
-  const key = trackCacheKey(S.activeTrackId, S.activeTrackLesson.id);
-
-  resetLessonPanel();
-  $('lesson-empty').classList.add('hidden');
-  const out = $('lesson-output');
-  out.innerHTML = '';
-  out.classList.remove('hidden');
-  out.classList.add('streaming');
-  $('lesson-footer').classList.add('hidden');
-
-  streamFetch('/api/track/lesson', { ...trackBody(), force },
-    (_, acc) => { out.innerHTML = parseMarkdown(acc); },
-    (full) => {
-      out.classList.remove('streaming');
-      out.innerHTML = parseMarkdown(full);
-      applyHighlight(out);
-      $('lesson-footer').classList.remove('hidden');
-      S.lessons[key] = out.innerHTML;
-    }
-  );
-}
-
-function loadTrackChallenge() {
-  if (S.streaming || !S.activeTrackLesson) return;
-  const key = trackCacheKey(S.activeTrackId, S.activeTrackLesson.id);
-
-  $('challenge-empty').classList.add('hidden');
-  $('challenge-inner').classList.remove('hidden');
-  closeEval();
-  const out = $('challenge-output');
-  out.innerHTML = '';
-  out.classList.add('streaming');
-
-  streamFetch('/api/track/challenge', trackBody(),
-    (_, acc) => { out.innerHTML = parseMarkdown(acc); },
-    (full) => {
-      out.classList.remove('streaming');
-      S.challengeRaw[key] = full;
-      out.innerHTML = parseMarkdown(full);
-      applyHighlight(out);
-      S.challenges[key] = out.innerHTML;
-      const editor = $('code-editor');
-      if (!editor.value.trim()) {
-        const match = full.match(/```[\w]*\s*([\s\S]*?)```/g);
-        if (match) {
-          const last = match[match.length - 1];
-          editor.value = last.replace(/```[\w]*\s*/, '').replace(/```$/, '').trim();
-          autoResize(editor);
-        }
-      }
-    }
-  );
-}
-
-function submitTrackCode() {
-  if (S.streaming || !S.activeTrackLesson) return;
-  const code = $('code-editor').value.trim();
-  const key  = trackCacheKey(S.activeTrackId, S.activeTrackLesson.id);
-  if (!code)               { showToast('Write some code first!', 'error'); return; }
-  if (!S.challengeRaw[key]) { showToast('Load a challenge first!', 'error'); return; }
-
-  const panel = $('eval-panel');
-  const out   = $('eval-output');
-  panel.classList.remove('hidden');
-  out.innerHTML = '';
-  out.classList.add('streaming');
-
-  streamFetch('/api/track/evaluate', { ...trackBody(), code, challenge: S.challengeRaw[key] },
-    (_, acc) => { out.innerHTML = parseMarkdown(acc); },
-    (full) => {
-      out.classList.remove('streaming');
-      out.innerHTML = parseMarkdown(full);
-      applyHighlight(out);
-      const lower = full.toLowerCase();
-      if (full.includes('✅') && (lower.includes('pass') || lower.includes('correct') || lower.includes('well done'))) {
-        showToast('✅ Challenge passed!', 'success');
-      }
-    }
-  );
-}
-
-function getTrackHint() {
-  if (S.streaming || !S.activeTrackLesson) return;
-  const key = trackCacheKey(S.activeTrackId, S.activeTrackLesson.id);
-  if (!S.challengeRaw[key]) { showToast('Load a challenge first!', 'error'); return; }
-
-  const panel = $('eval-panel');
-  const out   = $('eval-output');
-  panel.classList.remove('hidden');
-  out.innerHTML = '<p><strong>💡 Hint</strong></p>';
-  out.classList.add('streaming');
-
-  streamFetch('/api/track/hint', { ...trackBody(), challenge: S.challengeRaw[key], code: $('code-editor').value },
-    (_, acc) => { out.innerHTML = '<p><strong>💡 Hint</strong></p>' + parseMarkdown(acc); },
-    (full)   => { out.classList.remove('streaming'); out.innerHTML = '<p><strong>💡 Hint</strong></p>' + parseMarkdown(full); }
-  );
-}
-
-async function sendTrackChat() {
-  if (S.streaming || !S.activeTrackLesson) return;
-  const input = $('chat-input');
-  const text  = input.value.trim();
-  if (!text) return;
-
-  const history = getChatHistory();
-  history.push({ role: 'user', content: text });
-  input.value = '';
-  autoResize(input);
-
-  const box = $('chat-messages');
-  box.appendChild(createChatBubble('user', text));
-
-  const assistantWrap   = el('div', 'chat-msg chat-msg-assistant');
-  const assistantAvatar = el('div', 'chat-avatar', S.langs.find(l => l.id === S.lang)?.icon || '🎓');
-  const assistantBubble = el('div', 'chat-bubble streaming');
-  assistantWrap.appendChild(assistantAvatar);
-  assistantWrap.appendChild(assistantBubble);
-  box.appendChild(assistantWrap);
-  box.scrollTop = box.scrollHeight;
-
-  streamFetch('/api/track/chat', { ...trackBody(), messages: history },
-    (_, acc) => { assistantBubble.innerHTML = parseMarkdown(acc); box.scrollTop = box.scrollHeight; },
-    (full)   => {
-      assistantBubble.classList.remove('streaming');
-      assistantBubble.innerHTML = parseMarkdown(full);
-      applyHighlight(assistantBubble);
-      history.push({ role: 'assistant', content: full });
-      box.scrollTop = box.scrollHeight;
-    }
-  );
-}
+// (loadLesson/loadChallenge/submitCode/getHint/sendChat are now mode-aware
+//  and handle tracks too — see the unified versions above.)
 
 async function toggleTrackComplete() {
   if (!S.activeTrackLesson) return;
