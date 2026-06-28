@@ -8,15 +8,33 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 const (
 	anthropicAPI = "https://api.anthropic.com/v1/messages"
 	model        = "claude-sonnet-4-6"
+	maxRetries   = 3
 )
+
+// anthropicClient is a shared HTTP client configured for the Anthropic
+// streaming API. No overall Timeout is set because a streaming response is
+// unbounded in duration; ResponseHeaderTimeout guards against a stalled
+// upstream that never sends the first byte.
+var anthropicClient = &http.Client{
+	Transport: &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+	},
+}
 
 // Message is one turn in a conversation sent to the Anthropic API.
 type Message struct {
@@ -69,31 +87,65 @@ func streamFromAnthropic(ctx context.Context, w http.ResponseWriter, system, pro
 		"stream":     true,
 	})
 
-	req, err := http.NewRequestWithContext(ctx, "POST", anthropicAPI, bytes.NewBuffer(reqBody))
-	if err != nil {
-		sendErr("Could not build request: " + err.Error())
+	// Retry on rate-limit (429), overload (529), and transient server errors
+	// (5xx) with exponential back-off. The request body must be rebuilt each
+	// attempt because http.Request.Body is consumed on the first read.
+	var (
+		resp       *http.Response
+		lastStatus int
+	)
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if attempt > 0 {
+			delay := time.Duration(1<<uint(attempt-1)) * time.Second // 1 s, 2 s, 4 s
+			log.Printf("Anthropic API retry %d/%d after %v (last status %d)", attempt, maxRetries, delay, lastStatus)
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				return
+			}
+		}
+
+		req, err := http.NewRequestWithContext(ctx, "POST", anthropicAPI, bytes.NewBuffer(reqBody))
+		if err != nil {
+			sendErr("Could not build request: " + err.Error())
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-api-key", apiKey)
+		req.Header.Set("anthropic-version", "2023-06-01")
+
+		resp, err = anthropicClient.Do(req)
+		if err != nil {
+			if ctx.Err() != nil {
+				return // client disconnected; nothing to report
+			}
+			sendErr("Could not reach Anthropic API: " + err.Error())
+			return
+		}
+
+		if resp.StatusCode == http.StatusOK {
+			break
+		}
+
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		lastStatus = resp.StatusCode
+		log.Printf("Anthropic API attempt %d/%d: status %d: %s", attempt+1, maxRetries+1, lastStatus, string(body))
+
+		if lastStatus == 429 || lastStatus == 529 || lastStatus >= 500 {
+			resp = nil
+			continue // retryable
+		}
+
+		// Non-retryable (e.g. 401 bad key, 400 bad request).
+		sendErr(fmt.Sprintf("API returned status %d — check your API key", lastStatus))
 		return
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key", apiKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		if ctx.Err() != nil {
-			return // client went away; expected, not an error worth reporting
-		}
-		sendErr("Could not reach Anthropic API: " + err.Error())
+	if resp == nil {
+		sendErr(fmt.Sprintf("API returned status %d after %d attempts — try again shortly", lastStatus, maxRetries+1))
 		return
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		log.Printf("Anthropic API error %d: %s", resp.StatusCode, string(body))
-		sendErr(fmt.Sprintf("API returned status %d — check your API key", resp.StatusCode))
-		return
-	}
 
 	var buf strings.Builder // accumulate for the optional onComplete callback
 	scanner := bufio.NewScanner(resp.Body)
