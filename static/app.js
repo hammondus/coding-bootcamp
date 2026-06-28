@@ -411,8 +411,11 @@ function selectTopic(id, reset = true) {
       resetLessonPanel();
     }
 
-    if (!S.challenges[key]) resetChallengePanel();
-    else                    showChallengeContent(S.challenges[key]);
+    // Challenge: restore from JS cache if present, otherwise show the empty
+    // state. A server-cached challenge is fetched lazily when the user opens
+    // the Challenge tab (see switchTab) — the lesson owns the stream here.
+    if (S.challenges[key]) showChallengeContent(S.challenges[key]);
+    else                   resetChallengePanel();
 
     closeEval();
     $('code-editor').value = '';
@@ -431,6 +434,21 @@ function switchTab(tab) {
     p.classList.toggle('active',  show);
     p.classList.toggle('hidden', !show);
   });
+
+  // Opening the Challenge tab: if the server already has a cached challenge for
+  // this selection and we haven't shown one yet, fetch it instantly (served
+  // from the server cache as a single chunk — no regeneration, no token cost).
+  if (tab === 'challenge' && !S.streaming && hasSelection()
+      && !S.challenges[activeCacheKey()] && activeChallengeCached()) {
+    loadChallenge();
+  }
+}
+
+// True when the current selection has a challenge cached server-side.
+function activeChallengeCached() {
+  return S.mode === 'track'
+    ? !!S.activeTrackLesson?.challengeCached
+    : !!activeTopic()?.challengeCached;
 }
 
 // ── Lesson panel ───────────────────────────────
@@ -491,7 +509,7 @@ function showChallengeContent(html) {
   applyHighlight(out);
 }
 
-function loadChallenge() {
+function loadChallenge(force = false) {
   if (S.streaming || !hasSelection()) return;
   const key = activeCacheKey();
   $('challenge-empty').classList.add('hidden');
@@ -503,7 +521,7 @@ function loadChallenge() {
 
   streamFetch(
     endpoint('challenge'),
-    reqBody(),
+    reqBody({ force }),
     (_, acc) => { out.innerHTML = parseMarkdown(acc); },
     (full) => {
       out.classList.remove('streaming');

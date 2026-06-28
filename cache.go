@@ -9,9 +9,13 @@ import (
 	"sync"
 )
 
-const cacheFile = "data/cache.json" // persists generated lesson content
+const cacheFile = "data/cache.json" // persists generated lesson & challenge content
 
-// lessonCache["go:lesson:1"] or ["go:track:http:2"] = full markdown text
+// lessonCache holds generated markdown keyed by content kind, e.g.
+//   "go:lesson:1"               — fundamentals lesson
+//   "go:challenge:1"            — fundamentals challenge
+//   "go:track:http:2"           — advanced track lesson
+//   "go:track:http:challenge:2" — advanced track challenge
 var (
 	lessonCache   = map[string]string{}
 	lessonCacheMu sync.RWMutex

@@ -55,11 +55,12 @@ func handleTracks(w http.ResponseWriter, r *http.Request, user string) {
 	done := getUserLangProgress(user, langID)
 
 	type LessonResp struct {
-		ID           int    `json:"id"`
-		Title        string `json:"title"`
-		Summary      string `json:"summary"`
-		Completed    bool   `json:"completed"`
-		LessonCached bool   `json:"lessonCached"`
+		ID              int    `json:"id"`
+		Title           string `json:"title"`
+		Summary         string `json:"summary"`
+		Completed       bool   `json:"completed"`
+		LessonCached    bool   `json:"lessonCached"`
+		ChallengeCached bool   `json:"challengeCached"`
 	}
 	type TrackResp struct {
 		ID          string       `json:"id"`
@@ -74,11 +75,12 @@ func handleTracks(w http.ResponseWriter, r *http.Request, user string) {
 		lessons := make([]LessonResp, len(t.Lessons))
 		for i, l := range t.Lessons {
 			lessons[i] = LessonResp{
-				ID:           l.ID,
-				Title:        l.Title,
-				Summary:      l.Summary,
-				Completed:    done[fmt.Sprintf("track:%s:%d", t.ID, l.ID)],
-				LessonCached: cacheHas(fmt.Sprintf("%s:track:%s:%d", langID, t.ID, l.ID)),
+				ID:              l.ID,
+				Title:           l.Title,
+				Summary:         l.Summary,
+				Completed:       done[fmt.Sprintf("track:%s:%d", t.ID, l.ID)],
+				LessonCached:    cacheHas(fmt.Sprintf("%s:track:%s:%d", langID, t.ID, l.ID)),
+				ChallengeCached: cacheHas(fmt.Sprintf("%s:track:%s:challenge:%d", langID, t.ID, l.ID)),
 			}
 		}
 		result = append(result, TrackResp{
@@ -174,6 +176,7 @@ func handleTrackChallenge(w http.ResponseWriter, r *http.Request, user string) {
 		Lang     string `json:"lang"`
 		TrackID  string `json:"track_id"`
 		LessonID int    `json:"lesson_id"`
+		Force    bool   `json:"force"` // true = bypass cache (Regenerate button)
 	}
 	if !decodePOST(w, r, &req) {
 		return
@@ -185,6 +188,15 @@ func handleTrackChallenge(w http.ResponseWriter, r *http.Request, user string) {
 	track, lesson, ok := lookupTrackLesson(w, lang, req.TrackID, req.LessonID)
 	if !ok {
 		return
+	}
+
+	// Challenges are cached just like lessons so they survive a server restart.
+	cacheKey := fmt.Sprintf("%s:track:%s:challenge:%d", req.Lang, req.TrackID, req.LessonID)
+	if !req.Force {
+		if cached, hit := cacheGet(cacheKey); hit {
+			streamCached(w, cached)
+			return
+		}
 	}
 
 	prevCtx := buildTrackContext(track, lesson.ID)
@@ -224,7 +236,9 @@ Output: ...
 		lang.StarterTemplate,
 	)
 
-	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil)
+	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil, func(full string) {
+		cacheStore(cacheKey, full)
+	})
 }
 
 func handleTrackEvaluate(w http.ResponseWriter, r *http.Request, user string) {

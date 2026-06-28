@@ -48,18 +48,20 @@ func handleTopics(w http.ResponseWriter, r *http.Request, user string) {
 	done := getUserLangProgress(user, langID)
 
 	type TopicResp struct {
-		ID           int    `json:"id"`
-		Name         string `json:"name"`
-		Completed    bool   `json:"completed"`
-		LessonCached bool   `json:"lessonCached"`
+		ID              int    `json:"id"`
+		Name            string `json:"name"`
+		Completed       bool   `json:"completed"`
+		LessonCached    bool   `json:"lessonCached"`
+		ChallengeCached bool   `json:"challengeCached"`
 	}
 	result := make([]TopicResp, len(lang.Topics))
 	for i, t := range lang.Topics {
 		result[i] = TopicResp{
-			ID:           t.ID,
-			Name:         t.Name,
-			Completed:    done[fmt.Sprintf("%d", t.ID)],
-			LessonCached: cacheHas(fmt.Sprintf("%s:lesson:%d", langID, t.ID)),
+			ID:              t.ID,
+			Name:            t.Name,
+			Completed:       done[fmt.Sprintf("%d", t.ID)],
+			LessonCached:    cacheHas(fmt.Sprintf("%s:lesson:%d", langID, t.ID)),
+			ChallengeCached: cacheHas(fmt.Sprintf("%s:challenge:%d", langID, t.ID)),
 		}
 	}
 	jsonOK(w, result)
@@ -127,6 +129,7 @@ func handleChallenge(w http.ResponseWriter, r *http.Request, user string) {
 		Lang      string `json:"lang"`
 		TopicID   int    `json:"topic_id"`
 		TopicName string `json:"topic_name"`
+		Force     bool   `json:"force"` // true = bypass cache (Regenerate button)
 	}
 	if !decodePOST(w, r, &req) {
 		return
@@ -134,6 +137,15 @@ func handleChallenge(w http.ResponseWriter, r *http.Request, user string) {
 	lang, ok := lookupLang(w, req.Lang)
 	if !ok {
 		return
+	}
+
+	// Challenges are cached just like lessons so they survive a server restart.
+	key := fmt.Sprintf("%s:challenge:%d", req.Lang, req.TopicID)
+	if !req.Force {
+		if cached, hit := cacheGet(key); hit {
+			streamCached(w, cached)
+			return
+		}
 	}
 
 	prompt := fmt.Sprintf(`Create a practical %s coding challenge for Topic %d: **%s**.
@@ -162,7 +174,9 @@ Output: ...
 Keep it focused purely on %s concepts. Make it engaging with a real-world flavor.`,
 		lang.Name, req.TopicID, req.TopicName, lang.StarterTemplate, req.TopicName)
 
-	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil)
+	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil, func(full string) {
+		cacheStore(key, full)
+	})
 }
 
 func handleEvaluate(w http.ResponseWriter, r *http.Request, user string) {
