@@ -291,6 +291,7 @@ Be encouraging. Note: code cannot be executed — evaluate on logic and conventi
 		track.Title,
 		lang.Name, lang.StyleNote,
 	)
+	prompt += lessonContextBlock(fmt.Sprintf("%s:track:%s:%d", req.Lang, req.TrackID, req.LessonID))
 
 	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil)
 }
@@ -327,6 +328,7 @@ Give ONE specific, encouraging nudge. Maximum 3 sentences. Don't reveal the answ
 		lang.Name, lesson.Title, track.Title,
 		req.Challenge, lang.ID, req.Code,
 	)
+	prompt += lessonContextBlock(fmt.Sprintf("%s:track:%s:%d", req.Lang, req.TrackID, req.LessonID))
 
 	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil)
 }
@@ -350,10 +352,14 @@ func handleTrackChat(w http.ResponseWriter, r *http.Request, user string) {
 		return
 	}
 
+	ctx := chatContextBlock(
+		fmt.Sprintf("%s:track:%s:%d", req.Lang, req.TrackID, req.LessonID),
+		fmt.Sprintf("%s:track:%s:challenge:%d", req.Lang, req.TrackID, req.LessonID),
+	)
 	system := fmt.Sprintf(`%s
 The student is working through the **%s** track, Lesson %d: %s.
-Answer their questions clearly and in the context of this specific lesson and track.`,
-		lang.SystemPrompt, track.Title, lesson.ID, lesson.Title,
+Answer their questions clearly and in the context of this specific lesson and track. When relevant, ground your answer in the lesson and challenge below.%s`,
+		lang.SystemPrompt, track.Title, lesson.ID, lesson.Title, ctx,
 	)
 
 	streamFromAnthropic(r.Context(), w, system, "", req.Messages)

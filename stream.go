@@ -17,8 +17,9 @@ import (
 
 const (
 	anthropicAPI = "https://api.anthropic.com/v1/messages"
-	model        = "claude-sonnet-4-6"
-	maxRetries   = 3
+	// model        = "claude-sonnet-4-6"
+	model      = "claude-opus-4-8"
+	maxRetries = 3
 )
 
 // anthropicClient is a shared HTTP client configured for the Anthropic
@@ -28,8 +29,8 @@ const (
 var anthropicClient = &http.Client{
 	Transport: &http.Transport{
 		DialContext: (&net.Dialer{
-			Timeout:   10 * time.Second,
-			KeepAlive: 30 * time.Second,
+			Timeout:   30 * time.Second,
+			KeepAlive: 60 * time.Second,
 		}).DialContext,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ResponseHeaderTimeout: 30 * time.Second,

@@ -3,7 +3,39 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"strings"
 )
+
+// chatContextBlock pulls the already-generated lesson and challenge for a topic
+// out of the cache and formats them as a reference block to append to the chat
+// system prompt. Without this, chat only knows the topic *name* and can't speak
+// to what the lesson actually taught or what the challenge asks. Either piece is
+// simply omitted if it hasn't been generated yet (the student may open chat
+// before loading the lesson or challenge), so this never blocks a question.
+func chatContextBlock(lessonKey, challengeKey string) string {
+	var sb strings.Builder
+	if lesson, ok := cacheGet(lessonKey); ok {
+		sb.WriteString("\n\n--- THE LESSON THE STUDENT IS STUDYING ---\n")
+		sb.WriteString(lesson)
+	}
+	if challenge, ok := cacheGet(challengeKey); ok {
+		sb.WriteString("\n\n--- THE CURRENT CHALLENGE ---\n")
+		sb.WriteString(challenge)
+	}
+	return sb.String()
+}
+
+// lessonContextBlock returns the cached lesson for a topic as a reference block
+// to append to a hint or evaluation prompt. Those prompts already include the
+// challenge (sent from the UI) but never the lesson, so the model can't tie its
+// feedback back to what was actually taught. Returns "" if the lesson hasn't
+// been generated yet, so the prompt still works without it.
+func lessonContextBlock(lessonKey string) string {
+	if lesson, ok := cacheGet(lessonKey); ok {
+		return "\n\n--- THE LESSON THIS CHALLENGE IS BASED ON ---\n" + lesson
+	}
+	return ""
+}
 
 // ── Language handler ──────────────────────────────────
 
@@ -224,6 +256,7 @@ Be encouraging and educational. Note: code cannot be executed — evaluate on lo
 		lang.ID, req.Code,
 		lang.Name,
 		lang.Name, lang.StyleNote)
+	prompt += lessonContextBlock(fmt.Sprintf("%s:lesson:%d", req.Lang, req.TopicID))
 
 	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil)
 }
@@ -254,6 +287,7 @@ Student's current code:
 
 Give ONE specific, encouraging nudge that moves them forward without revealing the answer. Maximum 3 sentences.`,
 		lang.Name, req.TopicName, req.Challenge, lang.ID, req.Code)
+	prompt += lessonContextBlock(fmt.Sprintf("%s:lesson:%d", req.Lang, req.TopicID))
 
 	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil)
 }
@@ -273,9 +307,13 @@ func handleChat(w http.ResponseWriter, r *http.Request, user string) {
 		return
 	}
 
+	ctx := chatContextBlock(
+		fmt.Sprintf("%s:lesson:%d", req.Lang, req.TopicID),
+		fmt.Sprintf("%s:challenge:%d", req.Lang, req.TopicID),
+	)
 	system := fmt.Sprintf(`%s
-The student is studying Topic %d: %s. Answer their questions clearly, concisely, and encouragingly.`,
-		lang.SystemPrompt, req.TopicID, req.TopicName)
+The student is studying Topic %d: %s. Answer their questions clearly, concisely, and encouragingly. When relevant, ground your answer in the lesson and challenge below.%s`,
+		lang.SystemPrompt, req.TopicID, req.TopicName, ctx)
 
 	streamFromAnthropic(r.Context(), w, system, "", req.Messages)
 }
