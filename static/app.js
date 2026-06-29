@@ -406,20 +406,24 @@ function selectTopic(id, reset = true) {
     const key   = cacheKey(id);
     const topic = S.topics.find(t => t.id === id);
 
-    // Lesson: JS cache → server cache (auto-load) → empty state
-    if (S.lessons[key]) {
-      showLessonContent(S.lessons[key]);
-    } else if (topic?.lessonCached) {
-      loadLesson(); // server has it — fetch instantly, no button click needed
-    } else {
-      resetLessonPanel();
-    }
-
-    // Challenge: restore from JS cache if present, otherwise show the empty
-    // state. A server-cached challenge is fetched lazily when the user opens
-    // the Challenge tab (see switchTab) — the lesson owns the stream here.
-    if (S.challenges[key]) showChallengeContent(S.challenges[key]);
-    else                   resetChallengePanel();
+    // Restore each panel: JS cache → server cache (auto-load) → empty state.
+    // Only one stream runs at a time (streamFetch guards on S.streaming), so
+    // the tab the user is actually looking at goes first and wins the stream;
+    // the other tab loads now only if it doesn't need the stream (already in
+    // the JS cache), otherwise it's picked up lazily on tab switch (see
+    // switchTab). This keeps the lesson and challenge panels symmetric.
+    const restoreLesson = () => {
+      if (S.lessons[key])           showLessonContent(S.lessons[key]);
+      else if (topic?.lessonCached) loadLesson();
+      else                          resetLessonPanel();
+    };
+    const restoreChallenge = () => {
+      if (S.challenges[key])           showChallengeContent(S.challenges[key]);
+      else if (topic?.challengeCached) loadChallenge();
+      else                             resetChallengePanel();
+    };
+    if (S.activeTab === 'challenge') { restoreChallenge(); restoreLesson(); }
+    else                             { restoreLesson(); restoreChallenge(); }
 
     closeEval();
     $('code-editor').value = '';
@@ -439,13 +443,26 @@ function switchTab(tab) {
     p.classList.toggle('hidden', !show);
   });
 
-  // Opening the Challenge tab: if the server already has a cached challenge for
-  // this selection and we haven't shown one yet, fetch it instantly (served
-  // from the server cache as a single chunk — no regeneration, no token cost).
-  if (tab === 'challenge' && !S.streaming && hasSelection()
-      && !S.challenges[activeCacheKey()] && activeChallengeCached()) {
-    loadChallenge();
+  // Opening a tab whose content is cached server-side but hasn't been shown
+  // yet: fetch it instantly (served from the server cache as a single chunk —
+  // no regeneration, no token cost). This mirrors the eager load in
+  // selectTopic for whichever tab wasn't the visible one at selection time.
+  if (!S.streaming && hasSelection()) {
+    if (tab === 'lesson'
+        && !S.lessons[activeCacheKey()] && activeLessonCached()) {
+      loadLesson();
+    } else if (tab === 'challenge'
+        && !S.challenges[activeCacheKey()] && activeChallengeCached()) {
+      loadChallenge();
+    }
   }
+}
+
+// True when the current selection has a lesson cached server-side.
+function activeLessonCached() {
+  return S.mode === 'track'
+    ? !!S.activeTrackLesson?.lessonCached
+    : !!activeTopic()?.lessonCached;
 }
 
 // True when the current selection has a challenge cached server-side.
