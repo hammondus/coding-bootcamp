@@ -79,8 +79,8 @@ func handleTracks(w http.ResponseWriter, r *http.Request, user string) {
 				Title:           l.Title,
 				Summary:         l.Summary,
 				Completed:       done[fmt.Sprintf("track:%s:%d", t.ID, l.ID)],
-				LessonCached:    cacheHas(fmt.Sprintf("%s:track:%s:%d", langID, t.ID, l.ID)),
-				ChallengeCached: cacheHas(fmt.Sprintf("%s:track:%s:challenge:%d", langID, t.ID, l.ID)),
+				LessonCached:    cacheHas(user, fmt.Sprintf("%s:track:%s:%d", langID, t.ID, l.ID)),
+				ChallengeCached: cacheHas(user, fmt.Sprintf("%s:track:%s:challenge:%d", langID, t.ID, l.ID)),
 			}
 		}
 		result = append(result, TrackResp{
@@ -115,7 +115,7 @@ func handleTrackLesson(w http.ResponseWriter, r *http.Request, user string) {
 
 	cacheKey := fmt.Sprintf("%s:track:%s:%d", req.Lang, req.TrackID, req.LessonID)
 	if !req.Force {
-		if cached, hit := cacheGet(cacheKey); hit {
+		if cached, hit := cacheGet(user, cacheKey); hit {
 			streamCached(w, cached)
 			return
 		}
@@ -167,7 +167,7 @@ One sentence: what the student can now do that they couldn't before this lesson.
 	)
 
 	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil, func(full string) {
-		cacheStore(cacheKey, full)
+		cacheStore(user, cacheKey, full)
 	})
 }
 
@@ -193,7 +193,7 @@ func handleTrackChallenge(w http.ResponseWriter, r *http.Request, user string) {
 	// Challenges are cached just like lessons so they survive a server restart.
 	cacheKey := fmt.Sprintf("%s:track:%s:challenge:%d", req.Lang, req.TrackID, req.LessonID)
 	if !req.Force {
-		if cached, hit := cacheGet(cacheKey); hit {
+		if cached, hit := cacheGet(user, cacheKey); hit {
 			streamCached(w, cached)
 			return
 		}
@@ -237,7 +237,7 @@ Output: ...
 	)
 
 	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil, func(full string) {
-		cacheStore(cacheKey, full)
+		cacheStore(user, cacheKey, full)
 	})
 }
 
@@ -291,7 +291,7 @@ Be encouraging. Note: code cannot be executed — evaluate on logic and conventi
 		track.Title,
 		lang.Name, lang.StyleNote,
 	)
-	prompt += lessonContextBlock(fmt.Sprintf("%s:track:%s:%d", req.Lang, req.TrackID, req.LessonID))
+	prompt += lessonContextBlock(user, fmt.Sprintf("%s:track:%s:%d", req.Lang, req.TrackID, req.LessonID))
 
 	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil)
 }
@@ -328,7 +328,7 @@ Give ONE specific, encouraging nudge. Maximum 3 sentences. Don't reveal the answ
 		lang.Name, lesson.Title, track.Title,
 		req.Challenge, lang.ID, req.Code,
 	)
-	prompt += lessonContextBlock(fmt.Sprintf("%s:track:%s:%d", req.Lang, req.TrackID, req.LessonID))
+	prompt += lessonContextBlock(user, fmt.Sprintf("%s:track:%s:%d", req.Lang, req.TrackID, req.LessonID))
 
 	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil)
 }
@@ -353,6 +353,7 @@ func handleTrackChat(w http.ResponseWriter, r *http.Request, user string) {
 	}
 
 	ctx := chatContextBlock(
+		user,
 		fmt.Sprintf("%s:track:%s:%d", req.Lang, req.TrackID, req.LessonID),
 		fmt.Sprintf("%s:track:%s:challenge:%d", req.Lang, req.TrackID, req.LessonID),
 	)

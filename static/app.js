@@ -6,7 +6,8 @@
 const S = {
   user:         null,    // logged-in username
   lang:         'go',    // active language ID
-  langs:        [],      // [{id, name, icon, ...}] from /api/languages
+  langs:        [],      // flat [{id, name, icon, ...}], derived from cats
+  cats:         [],      // [{id, name, languages:[...]}] from /api/languages
   topics:       [],      // [{id, name, completed, lessonCached}] for active lang
   activeId:     1,
   activeTab:    'lesson',
@@ -275,28 +276,55 @@ async function checkAuth() {
 }
 
 // ── Languages ──────────────────────────────────
+
+// langIconHTML renders a language's brand logo. Icons are SVG files under
+// /static/icons (set in languages.go); the image scales to the container's
+// font-size via the .lang-icon rule. Falls back to a graduation-cap emoji when
+// the language is unknown (e.g. a chat avatar before languages have loaded).
+function langIconHTML(lang) {
+  if (!lang || !lang.icon) return '🎓';
+  return `<img class="lang-icon" src="${lang.icon}" alt="${lang.name || ''}">`;
+}
+
 async function loadLanguages() {
   try {
     const resp = await fetch('/api/languages');
-    S.langs = await resp.json();
+    S.cats = await resp.json();
   } catch (_) {
-    S.langs = [
-      { id: 'go',  name: 'Go',  icon: '🐹', cmd: '$ go run .', accentColor: '#00ADD8', accentDark: '#007fa0', accentGlow: 'rgba(0,173,216,0.15)', codeLabel: 'GO' },
-      { id: 'zig', name: 'Zig', icon: '⚡', cmd: '$ zig build run', accentColor: '#F7A41D', accentDark: '#C47D0A', accentGlow: 'rgba(247,164,29,0.15)', codeLabel: 'ZIG' },
+    S.cats = [
+      { id: 'backend', name: 'Backend', languages: [
+        { id: 'go',  name: 'Go',  icon: '/static/icons/go.svg', cmd: '$ go run .', accentColor: '#00ADD8', accentDark: '#007fa0', accentGlow: 'rgba(0,173,216,0.15)', codeLabel: 'GO' },
+        { id: 'zig', name: 'Zig', icon: '/static/icons/zig.svg', cmd: '$ zig build run', accentColor: '#F7A41D', accentDark: '#C47D0A', accentGlow: 'rgba(247,164,29,0.15)', codeLabel: 'ZIG' },
+      ]},
+      { id: 'frontend', name: 'Frontend', languages: [
+        { id: 'javascript', name: 'JavaScript', icon: '/static/icons/javascript.svg', cmd: '$ node app.js', accentColor: '#F7DF1E', accentDark: '#C7B100', accentGlow: 'rgba(247,223,30,0.15)', codeLabel: 'JS' },
+        { id: 'html', name: 'HTML', icon: '/static/icons/html.svg', cmd: '$ open index.html', accentColor: '#E34F26', accentDark: '#B23318', accentGlow: 'rgba(227,79,38,0.15)', codeLabel: 'HTML' },
+        { id: 'css',  name: 'CSS',  icon: '/static/icons/css.svg', cmd: '$ open index.html', accentColor: '#1572B6', accentDark: '#0E4F7E', accentGlow: 'rgba(21,114,182,0.15)', codeLabel: 'CSS' },
+      ]},
     ];
   }
+  // Flatten into a single ordered list for lookups by id elsewhere.
+  S.langs = S.cats.flatMap(c => c.languages);
   renderLangSwitcher();
 }
 
 function renderLangSwitcher() {
   const sw = $('lang-switcher');
   sw.innerHTML = '';
-  S.langs.forEach(lang => {
-    const btn = el('button', `lang-btn${lang.id === S.lang ? ' active' : ''}`);
-    btn.dataset.lang = lang.id;
-    btn.innerHTML = `<span>${lang.icon}</span><span>${lang.name}</span>`;
-    btn.addEventListener('click', () => switchLang(lang.id));
-    sw.appendChild(btn);
+  S.cats.forEach(cat => {
+    const group = el('div', 'lang-cat');
+    const label = el('div', 'lang-cat-label', cat.name);
+    const btns = el('div', 'lang-cat-btns');
+    cat.languages.forEach(lang => {
+      const btn = el('button', `lang-btn${lang.id === S.lang ? ' active' : ''}`);
+      btn.dataset.lang = lang.id;
+      btn.innerHTML = `${langIconHTML(lang)}<span>${lang.name}</span>`;
+      btn.addEventListener('click', () => switchLang(lang.id));
+      btns.appendChild(btn);
+    });
+    group.appendChild(label);
+    group.appendChild(btns);
+    sw.appendChild(group);
   });
 }
 
@@ -306,10 +334,10 @@ function applyLangTheme(lang) {
   root.style.setProperty('--accent2',     lang.accentDark);
   root.style.setProperty('--accent-glow', lang.accentGlow);
   root.style.setProperty('--code-label',  `'${lang.codeLabel}'`);
-  $('brand-icon').textContent  = lang.icon;
+  $('brand-icon').innerHTML    = langIconHTML(lang);
   $('brand-title').textContent = `${lang.name} Bootcamp`;
   $('brand-cmd').textContent   = lang.cmd;
-  $('chat-intro-icon').textContent = lang.icon;
+  $('chat-intro-icon').innerHTML = langIconHTML(lang);
   document.querySelectorAll('.lang-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.lang === lang.id);
   });
@@ -632,7 +660,7 @@ function renderChat() {
 
 function createChatBubble(role, content) {
   const wrap   = el('div', `chat-msg chat-msg-${role}`);
-  const avatar = el('div', 'chat-avatar', role === 'user' ? '🧑‍💻' : (S.langs.find(l => l.id === S.lang)?.icon || '🎓'));
+  const avatar = el('div', 'chat-avatar', role === 'user' ? '🧑‍💻' : langIconHTML(S.langs.find(l => l.id === S.lang)));
   const bubble = el('div', 'chat-bubble');
   if (role === 'assistant') {
     bubble.innerHTML = parseMarkdown(content);
@@ -660,7 +688,7 @@ async function sendChat() {
   box.appendChild(createChatBubble('user', text));
 
   const assistantWrap   = el('div', 'chat-msg chat-msg-assistant');
-  const assistantAvatar = el('div', 'chat-avatar', S.langs.find(l => l.id === S.lang)?.icon || '🎓');
+  const assistantAvatar = el('div', 'chat-avatar', langIconHTML(S.langs.find(l => l.id === S.lang)));
   const assistantBubble = el('div', 'chat-bubble streaming');
   assistantWrap.appendChild(assistantAvatar);
   assistantWrap.appendChild(assistantBubble);
@@ -887,6 +915,9 @@ async function init() {
     showLoginModal();
     return; // submitAuth() calls postAuthInit() on success
   }
+  // Already authenticated (an existing session, or -dev auto-login). The modal
+  // is visible by default, so hide it here — only submitAuth() would otherwise.
+  hideLoginModal();
   S.user = me.username;
   await postAuthInit();
 }

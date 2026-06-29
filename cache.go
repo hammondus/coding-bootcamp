@@ -11,13 +11,16 @@ import (
 
 const cacheFile = "data/cache.json" // persists generated lesson & challenge content
 
-// lessonCache holds generated markdown keyed by content kind, e.g.
+// lessonCache holds generated markdown per user so content (and the
+// "regenerate" variations a student produces) is never shared between accounts.
+// It is a two-level map: username → content-key → markdown, where the
+// content-key names the kind, e.g.
 //   "go:lesson:1"               — fundamentals lesson
 //   "go:challenge:1"            — fundamentals challenge
 //   "go:track:http:2"           — advanced track lesson
 //   "go:track:http:challenge:2" — advanced track challenge
 var (
-	lessonCache   = map[string]string{}
+	lessonCache   = map[string]map[string]string{}
 	lessonCacheMu sync.RWMutex
 )
 
@@ -26,9 +29,17 @@ func loadLessonCache() {
 	if err != nil {
 		return
 	}
+	// Decode into a temp first so a parse failure (e.g. an older, pre-per-user
+	// cache file) leaves the live cache as a clean empty map rather than a
+	// half-populated one. Content just gets regenerated on demand.
+	var loaded map[string]map[string]string
+	if err := json.Unmarshal(data, &loaded); err != nil {
+		log.Printf("loadLessonCache: ignoring incompatible cache file: %v", err)
+		return
+	}
 	lessonCacheMu.Lock()
 	defer lessonCacheMu.Unlock()
-	json.Unmarshal(data, &lessonCache)
+	lessonCache = loaded
 }
 
 func saveLessonCache() {
@@ -42,30 +53,42 @@ func saveLessonCache() {
 	writeFileAtomic(cacheFile, data, 0644)
 }
 
-// cacheGet returns cached content for a key, if present.
-func cacheGet(key string) (string, bool) {
+// cacheGet returns the user's cached content for a key, if present.
+func cacheGet(user, key string) (string, bool) {
 	lessonCacheMu.RLock()
 	defer lessonCacheMu.RUnlock()
-	v, ok := lessonCache[key]
+	u := lessonCache[user]
+	if u == nil {
+		return "", false
+	}
+	v, ok := u[key]
 	return v, ok
 }
 
-// cacheHas reports whether a key is cached (used to flag pre-generated lessons
-// in list responses).
-func cacheHas(key string) bool {
+// cacheHas reports whether a key is cached for the user (used to flag
+// pre-generated lessons in list responses).
+func cacheHas(user, key string) bool {
 	lessonCacheMu.RLock()
 	defer lessonCacheMu.RUnlock()
-	_, ok := lessonCache[key]
+	u := lessonCache[user]
+	if u == nil {
+		return false
+	}
+	_, ok := u[key]
 	return ok
 }
 
-// cacheStore saves content under a key and persists the cache to disk.
-func cacheStore(key, content string) {
+// cacheStore saves content under a key for the user and persists the cache to
+// disk.
+func cacheStore(user, key, content string) {
 	lessonCacheMu.Lock()
-	lessonCache[key] = content
+	if lessonCache[user] == nil {
+		lessonCache[user] = map[string]string{}
+	}
+	lessonCache[user][key] = content
 	lessonCacheMu.Unlock()
 	go saveLessonCache()
-	log.Printf("cached: %s", key)
+	log.Printf("cached: %s/%s", user, key)
 }
 
 // streamCached sends already-generated content as a single SSE chunk.

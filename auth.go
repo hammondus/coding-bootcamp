@@ -18,12 +18,12 @@ const (
 )
 
 // ── DEV LOGIN BYPASS ──────────────────────────────────
-// For testing only: when devAutoLogin is true, every request is treated as
-// coming from devUser, so the login screen is skipped entirely. Flip this back
-// to false (or comment out the block in getSessionUser) before real use.
-const (
-	devAutoLogin = true
-	devUser      = "tester"
+// For local testing only. When devAutoLogin is true, every request is treated
+// as coming from devUser, so the login screen is skipped entirely. These are
+// set by the -dev / -dev-user startup flags in main.go and are off by default.
+var (
+	devAutoLogin = false
+	devUser      = "dev"
 )
 
 // ── Users ─────────────────────────────────────────────
@@ -87,8 +87,7 @@ func saveSessions() {
 }
 
 func getSessionUser(r *http.Request) (string, bool) {
-	// DEV LOGIN BYPASS — see the devAutoLogin const above. Comment out this
-	// block to restore the normal cookie-based login.
+	// DEV LOGIN BYPASS — enabled by the -dev startup flag (see main.go).
 	if devAutoLogin {
 		return devUser, true
 	}

@@ -12,13 +12,13 @@ import (
 // to what the lesson actually taught or what the challenge asks. Either piece is
 // simply omitted if it hasn't been generated yet (the student may open chat
 // before loading the lesson or challenge), so this never blocks a question.
-func chatContextBlock(lessonKey, challengeKey string) string {
+func chatContextBlock(user, lessonKey, challengeKey string) string {
 	var sb strings.Builder
-	if lesson, ok := cacheGet(lessonKey); ok {
+	if lesson, ok := cacheGet(user, lessonKey); ok {
 		sb.WriteString("\n\n--- THE LESSON THE STUDENT IS STUDYING ---\n")
 		sb.WriteString(lesson)
 	}
-	if challenge, ok := cacheGet(challengeKey); ok {
+	if challenge, ok := cacheGet(user, challengeKey); ok {
 		sb.WriteString("\n\n--- THE CURRENT CHALLENGE ---\n")
 		sb.WriteString(challenge)
 	}
@@ -30,8 +30,8 @@ func chatContextBlock(lessonKey, challengeKey string) string {
 // challenge (sent from the UI) but never the lesson, so the model can't tie its
 // feedback back to what was actually taught. Returns "" if the lesson hasn't
 // been generated yet, so the prompt still works without it.
-func lessonContextBlock(lessonKey string) string {
-	if lesson, ok := cacheGet(lessonKey); ok {
+func lessonContextBlock(user, lessonKey string) string {
+	if lesson, ok := cacheGet(user, lessonKey); ok {
 		return "\n\n--- THE LESSON THIS CHALLENGE IS BASED ON ---\n" + lesson
 	}
 	return ""
@@ -50,21 +50,30 @@ func handleLanguages(w http.ResponseWriter, r *http.Request) {
 		AccentGlow  string `json:"accentGlow"`
 		CodeLabel   string `json:"codeLabel"`
 	}
-	metas := make([]LangMeta, 0, len(languageOrder))
-	for _, id := range languageOrder {
-		l := languages[id]
-		metas = append(metas, LangMeta{
-			ID:          l.ID,
-			Name:        l.Name,
-			Icon:        l.Icon,
-			Cmd:         l.Cmd,
-			AccentColor: l.AccentColor,
-			AccentDark:  l.AccentDark,
-			AccentGlow:  l.AccentGlow,
-			CodeLabel:   l.CodeLabel,
-		})
+	type CatMeta struct {
+		ID        string     `json:"id"`
+		Name      string     `json:"name"`
+		Languages []LangMeta `json:"languages"`
 	}
-	jsonOK(w, metas)
+	result := make([]CatMeta, 0, len(categories))
+	for _, c := range categories {
+		cm := CatMeta{ID: c.ID, Name: c.Name, Languages: make([]LangMeta, 0, len(c.Langs))}
+		for _, id := range c.Langs {
+			l := languages[id]
+			cm.Languages = append(cm.Languages, LangMeta{
+				ID:          l.ID,
+				Name:        l.Name,
+				Icon:        l.Icon,
+				Cmd:         l.Cmd,
+				AccentColor: l.AccentColor,
+				AccentDark:  l.AccentDark,
+				AccentGlow:  l.AccentGlow,
+				CodeLabel:   l.CodeLabel,
+			})
+		}
+		result = append(result, cm)
+	}
+	jsonOK(w, result)
 }
 
 // ── Topics handler ────────────────────────────────────
@@ -92,8 +101,8 @@ func handleTopics(w http.ResponseWriter, r *http.Request, user string) {
 			ID:              t.ID,
 			Name:            t.Name,
 			Completed:       done[fmt.Sprintf("%d", t.ID)],
-			LessonCached:    cacheHas(fmt.Sprintf("%s:lesson:%d", langID, t.ID)),
-			ChallengeCached: cacheHas(fmt.Sprintf("%s:challenge:%d", langID, t.ID)),
+			LessonCached:    cacheHas(user, fmt.Sprintf("%s:lesson:%d", langID, t.ID)),
+			ChallengeCached: cacheHas(user, fmt.Sprintf("%s:challenge:%d", langID, t.ID)),
 		}
 	}
 	jsonOK(w, result)
@@ -120,7 +129,7 @@ func handleLesson(w http.ResponseWriter, r *http.Request, user string) {
 
 	// Serve from cache unless the user explicitly asked to regenerate.
 	if !req.Force {
-		if cached, hit := cacheGet(key); hit {
+		if cached, hit := cacheGet(user, key); hit {
 			streamCached(w, cached)
 			return
 		}
@@ -152,7 +161,7 @@ One crisp sentence: the essential takeaway.`,
 		req.TopicID, len(lang.Topics), req.TopicName, lang.Name, lang.Name)
 
 	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil, func(full string) {
-		cacheStore(key, full)
+		cacheStore(user, key, full)
 	})
 }
 
@@ -174,7 +183,7 @@ func handleChallenge(w http.ResponseWriter, r *http.Request, user string) {
 	// Challenges are cached just like lessons so they survive a server restart.
 	key := fmt.Sprintf("%s:challenge:%d", req.Lang, req.TopicID)
 	if !req.Force {
-		if cached, hit := cacheGet(key); hit {
+		if cached, hit := cacheGet(user, key); hit {
 			streamCached(w, cached)
 			return
 		}
@@ -207,7 +216,7 @@ Keep it focused purely on %s concepts. Make it engaging with a real-world flavor
 		lang.Name, req.TopicID, req.TopicName, lang.StarterTemplate, req.TopicName)
 
 	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil, func(full string) {
-		cacheStore(key, full)
+		cacheStore(user, key, full)
 	})
 }
 
@@ -256,7 +265,7 @@ Be encouraging and educational. Note: code cannot be executed — evaluate on lo
 		lang.ID, req.Code,
 		lang.Name,
 		lang.Name, lang.StyleNote)
-	prompt += lessonContextBlock(fmt.Sprintf("%s:lesson:%d", req.Lang, req.TopicID))
+	prompt += lessonContextBlock(user, fmt.Sprintf("%s:lesson:%d", req.Lang, req.TopicID))
 
 	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil)
 }
@@ -287,7 +296,7 @@ Student's current code:
 
 Give ONE specific, encouraging nudge that moves them forward without revealing the answer. Maximum 3 sentences.`,
 		lang.Name, req.TopicName, req.Challenge, lang.ID, req.Code)
-	prompt += lessonContextBlock(fmt.Sprintf("%s:lesson:%d", req.Lang, req.TopicID))
+	prompt += lessonContextBlock(user, fmt.Sprintf("%s:lesson:%d", req.Lang, req.TopicID))
 
 	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil)
 }
@@ -308,6 +317,7 @@ func handleChat(w http.ResponseWriter, r *http.Request, user string) {
 	}
 
 	ctx := chatContextBlock(
+		user,
 		fmt.Sprintf("%s:lesson:%d", req.Lang, req.TopicID),
 		fmt.Sprintf("%s:challenge:%d", req.Lang, req.TopicID),
 	)

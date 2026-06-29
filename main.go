@@ -1,12 +1,25 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net/http"
 	"os"
 )
 
 func main() {
+	// -dev bypasses the login screen entirely and auto-authenticates every
+	// request as the dev user. Local testing only — never enable in a shared
+	// deployment. -dev-user picks which username that is.
+	dev := flag.Bool("dev", false, "dev mode: bypass login, auto-authenticate as the dev user")
+	devUserFlag := flag.String("dev-user", "dev", "username to auto-login as in dev mode")
+	flag.Parse()
+	if *dev {
+		devAutoLogin = true
+		devUser = *devUserFlag
+		log.Printf("⚠️  DEV MODE — login bypassed, auto-logged in as %q", devUser)
+	}
+
 	os.MkdirAll("data", 0755)
 	loadUsers()
 	loadSessions()

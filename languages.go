@@ -40,12 +40,27 @@ type Language struct {
 	Tracks          []Track // advanced multi-lesson tracks; nil = no tracks for this language
 }
 
-// languageOrder controls the display order in the UI switcher.
-var languageOrder = []string{"go", "zig"}
+// Category groups related languages together in the UI switcher.
+type Category struct {
+	ID    string
+	Name  string
+	Langs []string // language IDs, in display order within the category
+}
+
+// categories controls how languages are grouped and ordered in the UI switcher.
+// To add a language: define its var below, add it to the languages map, and list
+// its ID in the appropriate category here.
+var categories = []Category{
+	{ID: "backend", Name: "Backend", Langs: []string{"go", "zig"}},
+	{ID: "frontend", Name: "Frontend", Langs: []string{"javascript", "html", "css"}},
+}
 
 var languages = map[string]Language{
-	"go":  goLanguage,
-	"zig": zigLanguage,
+	"go":         goLanguage,
+	"zig":        zigLanguage,
+	"javascript": javascriptLanguage,
+	"html":       htmlLanguage,
+	"css":        cssLanguage,
 }
 
 // ── Go ────────────────────────────────────────────────
@@ -53,7 +68,7 @@ var languages = map[string]Language{
 var goLanguage = Language{
 	ID:          "go",
 	Name:        "Go",
-	Icon:        "🐹",
+	Icon:        "/static/icons/go.svg",
 	Cmd:         "$ go run .",
 	AccentColor: "#00ADD8",
 	AccentDark:  "#007fa0",
@@ -90,7 +105,7 @@ Style reminder: Go uses camelCase for unexported names and PascalCase for export
 var zigLanguage = Language{
 	ID:          "zig",
 	Name:        "Zig",
-	Icon:        "⚡",
+	Icon:        "/static/icons/zig.svg",
 	Cmd:         "$ zig build run",
 	AccentColor: "#F7A41D",
 	AccentDark:  "#C47D0A",
@@ -121,4 +136,112 @@ Style reminder: Zig uses snake_case for variables and function names, PascalCase
 		{ID: 14, Name: "Build System & Testing"},
 	},
 	Tracks: zigTracks,
+}
+
+// ── JavaScript ────────────────────────────────────────
+
+var javascriptLanguage = Language{
+	ID:          "javascript",
+	Name:        "JavaScript",
+	Icon:        "/static/icons/javascript.svg",
+	Cmd:         "$ node app.js",
+	AccentColor: "#F7DF1E",
+	AccentDark:  "#C7B100",
+	AccentGlow:  "rgba(247,223,30,0.15)",
+	CodeLabel:   "JS",
+	StyleNote:   "One targeted tip on camelCase, const/let over var, strict equality (===), or modern ES idioms.",
+	StarterTemplate: "```js\n// Your solution here\n```",
+	SystemPrompt: `You are an expert JavaScript programming instructor running a hands-on bootcamp.
+You teach JavaScript clearly, practically, and engagingly. You are patient and encouraging.
+Format all responses in Markdown. Use triple-backtick js fences for all JavaScript code examples.
+Be concise but thorough. Include practical, real-world examples.
+Teach modern JavaScript (ES2015+): prefer const/let over var, arrow functions, template literals, destructuring, and async/await.
+Style reminder: JavaScript uses camelCase for variables and functions, PascalCase for classes, and strict equality (===) over loose (==). Flag issues if you see them.`,
+	Topics: []Topic{
+		{ID: 1, Name: "Variables & Types"},
+		{ID: 2, Name: "Operators & Expressions"},
+		{ID: 3, Name: "Control Flow"},
+		{ID: 4, Name: "Loops"},
+		{ID: 5, Name: "Functions & Arrow Functions"},
+		{ID: 6, Name: "Arrays"},
+		{ID: 7, Name: "Objects"},
+		{ID: 8, Name: "Strings & Template Literals"},
+		{ID: 9, Name: "Scope & Closures"},
+		{ID: 10, Name: "The DOM"},
+		{ID: 11, Name: "Events"},
+		{ID: 12, Name: "Promises & Async/Await"},
+		{ID: 13, Name: "Fetch & APIs"},
+		{ID: 14, Name: "Modules"},
+	},
+}
+
+// ── HTML ──────────────────────────────────────────────
+
+var htmlLanguage = Language{
+	ID:          "html",
+	Name:        "HTML",
+	Icon:        "/static/icons/html.svg",
+	Cmd:         "$ open index.html",
+	AccentColor: "#E34F26",
+	AccentDark:  "#B23318",
+	AccentGlow:  "rgba(227,79,38,0.15)",
+	CodeLabel:   "HTML",
+	StyleNote:   "One targeted tip on semantic elements, proper nesting, accessibility (alt text, labels), or valid document structure.",
+	StarterTemplate: "```html\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <title>My Page</title>\n</head>\n<body>\n  <!-- Your solution here -->\n</body>\n</html>\n```",
+	SystemPrompt: `You are an expert HTML instructor running a hands-on bootcamp.
+You teach HTML clearly, practically, and engagingly. You are patient and encouraging.
+Format all responses in Markdown. Use triple-backtick html fences for all HTML code examples.
+Be concise but thorough. Include practical, real-world examples.
+Emphasise semantic, accessible markup: the right element for the job, alt text on images, labels on form controls, and a valid document structure.
+Style reminder: prefer semantic elements (header, nav, main, article, section, footer) over generic divs, and lowercase tag and attribute names. Flag issues if you see them.`,
+	Topics: []Topic{
+		{ID: 1, Name: "Document Structure"},
+		{ID: 2, Name: "Text & Headings"},
+		{ID: 3, Name: "Links & Navigation"},
+		{ID: 4, Name: "Images & Media"},
+		{ID: 5, Name: "Lists"},
+		{ID: 6, Name: "Tables"},
+		{ID: 7, Name: "Forms & Inputs"},
+		{ID: 8, Name: "Semantic Elements"},
+		{ID: 9, Name: "Attributes & Metadata"},
+		{ID: 10, Name: "Accessibility"},
+		{ID: 11, Name: "Embedding Content"},
+		{ID: 12, Name: "Forms Validation"},
+	},
+}
+
+// ── CSS ───────────────────────────────────────────────
+
+var cssLanguage = Language{
+	ID:          "css",
+	Name:        "CSS",
+	Icon:        "/static/icons/css.svg",
+	Cmd:         "$ open index.html",
+	AccentColor: "#1572B6",
+	AccentDark:  "#0E4F7E",
+	AccentGlow:  "rgba(21,114,182,0.15)",
+	CodeLabel:   "CSS",
+	StyleNote:   "One targeted tip on selector specificity, the box model, using rem/em over px, or choosing flexbox vs grid.",
+	StarterTemplate: "```css\n/* Your solution here */\n```",
+	SystemPrompt: `You are an expert CSS instructor running a hands-on bootcamp.
+You teach CSS clearly, practically, and engagingly. You are patient and encouraging.
+Format all responses in Markdown. Use triple-backtick css fences for all CSS code examples.
+Be concise but thorough. Include practical, real-world examples.
+Emphasise modern layout (flexbox and grid), the box model, specificity, and responsive design with relative units and media queries.
+Style reminder: prefer class selectors over IDs for styling, keep specificity low, and use relative units (rem/em) where appropriate. Flag issues if you see them.`,
+	Topics: []Topic{
+		{ID: 1, Name: "Selectors"},
+		{ID: 2, Name: "Colors & Backgrounds"},
+		{ID: 3, Name: "The Box Model"},
+		{ID: 4, Name: "Typography"},
+		{ID: 5, Name: "Display & Layout"},
+		{ID: 6, Name: "Flexbox"},
+		{ID: 7, Name: "Grid"},
+		{ID: 8, Name: "Positioning"},
+		{ID: 9, Name: "Pseudo-classes & Pseudo-elements"},
+		{ID: 10, Name: "Transitions & Animations"},
+		{ID: 11, Name: "Transforms"},
+		{ID: 12, Name: "Custom Properties"},
+		{ID: 13, Name: "Responsive Design"},
+	},
 }
