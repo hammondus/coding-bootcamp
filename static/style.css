@@ -601,6 +601,23 @@ textarea, input { font-family: var(--font-mono); }
 
 .eval-panel.hidden { display: none; }
 
+/* Grab-bar along the top edge of the feedback panel. Dragging it
+   resizes the panel (see startEvalResize() in app.js); the code editor
+   above flexes to take whatever space is left. */
+.eval-resize {
+  height: 8px;
+  flex-shrink: 0;
+  cursor: ns-resize;
+  background: var(--bg4);
+  border-bottom: 1px solid var(--border);
+  /* the little grip line in the middle */
+  background-image: linear-gradient(var(--text3), var(--text3));
+  background-size: 28px 2px;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.eval-resize:hover { background-color: var(--bg3); }
+
 .eval-bar {
   display: flex;
   align-items: center;

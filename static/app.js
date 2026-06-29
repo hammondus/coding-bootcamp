@@ -703,6 +703,41 @@ function setupEditorTab() {
   });
 }
 
+// Let the user drag the top edge of the Feedback panel to resize it.
+// The code editor above has flex:1, so whatever height we give the panel
+// is taken from the editor automatically.
+function setupEvalResize() {
+  const handle = $('eval-resize');
+  const panel  = $('eval-panel');
+  if (!handle) return;
+
+  handle.addEventListener('mousedown', e => {
+    e.preventDefault();
+    const col       = panel.parentElement;          // .editor-col
+    const startY    = e.clientY;
+    const startH    = panel.offsetHeight;
+    // Keep at least this much room for the editor above; cap so the panel
+    // can't swallow the whole column.
+    const maxH      = Math.max(120, col.clientHeight - 140);
+
+    function onMove(ev) {
+      // Dragging up (smaller clientY) grows the panel.
+      let h = startH + (startY - ev.clientY);
+      h = Math.max(120, Math.min(h, maxH));
+      panel.style.maxHeight = 'none';               // override the CSS cap
+      panel.style.height = h + 'px';
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.userSelect = '';
+    }
+    document.body.style.userSelect = 'none';         // no text selection while dragging
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
+
 // ── Track sidebar ──────────────────────────────
 async function loadTracks() {
   try {
@@ -823,6 +858,7 @@ async function postAuthInit() {
 
   switchTab('lesson');
   setupEditorTab();
+  setupEvalResize();
 }
 
 // ── Init ───────────────────────────────────────
