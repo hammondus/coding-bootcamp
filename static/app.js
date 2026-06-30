@@ -24,11 +24,20 @@ const S = {
   streaming:    false,
 
   // ── Track state ───────────────────────────
-  mode:              'fundamentals', // 'fundamentals' | 'track'
+  mode:              'fundamentals', // 'fundamentals' | 'track' | 'project'
   tracks:            [],             // [{id, title, icon, description, lessons:[...]}]
   activeTrackId:     null,
   activeTrackLesson: null,           // {id, title, summary, completed, lessonCached}
   expandedTracks:    {},             // { trackId: bool }
+
+  // ── Project state ─────────────────────────
+  // A project is a capstone: one generated brief plus per-milestone build
+  // guidance. The brief is selected as a synthetic milestone with id 0
+  // (isBrief:true); real milestones are 1..N.
+  projects:                [],       // [{id, title, icon, description, briefCached, milestones:[...]}]
+  activeProjectId:         null,
+  activeProjectMilestone:  null,     // {id, title, summary, completed, guidanceCached} | {id:0, isBrief:true}
+  expandedProjects:        {},       // { projectId: bool }
 };
 
 // ── DOM helpers ────────────────────────────────
@@ -51,21 +60,42 @@ function cacheKey(topicId) {
 function trackCacheKey(trackId, lessonId) {
   return `${S.lang}:track:${trackId}:${lessonId}`;
 }
+function projectCacheKey(projectId, milestoneId) {
+  return `${S.lang}:project:${projectId}:${milestoneId}`;
+}
 function activeCacheKey() {
   if (S.mode === 'track' && S.activeTrackId && S.activeTrackLesson) {
     return trackCacheKey(S.activeTrackId, S.activeTrackLesson.id);
   }
+  if (S.mode === 'project' && S.activeProjectId && S.activeProjectMilestone) {
+    return projectCacheKey(S.activeProjectId, S.activeProjectMilestone.id);
+  }
   return cacheKey(S.activeId);
+}
+
+// True when the active project selection is the brief/overview (milestone 0).
+function briefSelected() {
+  return S.mode === 'project' && S.activeProjectMilestone?.id === 0;
 }
 
 // ── Mode-aware request helpers ─────────────────
 // These collapse the old fundamentals/track function pairs into one each:
 // the endpoint prefix and body shape are the only things that differed.
 function endpoint(action) {
+  if (S.mode === 'project') {
+    // The "lesson" action maps to the brief for the overview entry, or the
+    // milestone guidance for a real milestone. Everything else (evaluate, hint,
+    // chat) keeps its name under the /api/project/ prefix.
+    if (action === 'lesson') return briefSelected() ? '/api/project/brief' : '/api/project/milestone';
+    return `/api/project/${action}`;
+  }
   return S.mode === 'track' ? `/api/track/${action}` : `/api/${action}`;
 }
 
 function reqBody(extra = {}) {
+  if (S.mode === 'project') {
+    return { lang: S.lang, project_id: S.activeProjectId, milestone_id: S.activeProjectMilestone?.id, ...extra };
+  }
   if (S.mode === 'track') {
     return { lang: S.lang, track_id: S.activeTrackId, lesson_id: S.activeTrackLesson?.id, ...extra };
   }
@@ -75,6 +105,7 @@ function reqBody(extra = {}) {
 
 // True when there's a valid selection to act on for the current mode.
 function hasSelection() {
+  if (S.mode === 'project') return !!S.activeProjectMilestone;
   return S.mode === 'track' ? !!S.activeTrackLesson : true;
 }
 
@@ -348,8 +379,11 @@ async function switchLang(id, reset = true) {
   if (!lang) return;
   S.lang = id;
   S.mode = 'fundamentals';
+  // Project selections don't carry across languages (different projects).
+  S.activeProjectId = null;
+  S.activeProjectMilestone = null;
   applyLangTheme(lang);
-  await Promise.all([loadTopics(), loadTracks()]);
+  await Promise.all([loadTopics(), loadTracks(), loadProjects()]);
   if (reset) {
     const firstIncomplete = S.topics.find(t => !t.completed);
     selectTopic(firstIncomplete ? firstIncomplete.id : 1, false);
@@ -383,6 +417,28 @@ function renderTopics() {
 
 // ── Header ─────────────────────────────────────
 function renderHeader() {
+  // The brief hides the complete button; make sure it's visible again for
+  // every other selection (the button is shared across all three modes).
+  $('complete-btn').style.visibility = '';
+
+  if (S.mode === 'project' && S.activeProjectId && S.activeProjectMilestone) {
+    const project = S.projects.find(p => p.id === S.activeProjectId);
+    const m = S.activeProjectMilestone;
+    $('header-badge').textContent    = `${project?.icon || '🔗'} ${project?.title || 'Project'}`;
+    $('header-title').textContent    = m.isBrief ? 'Project Brief' : m.title;
+    $('chat-topic-name').textContent = m.isBrief ? (project?.title || 'this project') : m.title;
+    if (m.isBrief) {
+      // The overview isn't a completable build step.
+      $('complete-btn').style.visibility = 'hidden';
+      return;
+    }
+    const done = m.completed;
+    $('complete-icon').textContent  = done ? '✅' : '○';
+    $('complete-label').textContent = done ? 'Completed' : 'Mark complete';
+    $('complete-btn').classList.toggle('done', done);
+    return;
+  }
+
   if (S.mode === 'track' && S.activeTrackId && S.activeTrackLesson) {
     const track = S.tracks.find(t => t.id === S.activeTrackId);
     const lesson = S.activeTrackLesson;
@@ -427,6 +483,7 @@ async function loadTopics() {
 
 // ── Select topic ───────────────────────────────
 function selectTopic(id, reset = true) {
+  S.mode = 'fundamentals'; // leaving any track/project selection
   S.activeId = id;
   renderTopics();
   renderHeader();
@@ -486,15 +543,28 @@ function switchTab(tab) {
   }
 }
 
-// True when the current selection has a lesson cached server-side.
+// True when the current selection has a lesson (or brief/guidance) cached
+// server-side.
 function activeLessonCached() {
+  if (S.mode === 'project') {
+    const m = S.activeProjectMilestone;
+    if (!m) return false;
+    if (m.isBrief) {
+      const p = S.projects.find(x => x.id === S.activeProjectId);
+      return !!p?.briefCached;
+    }
+    return !!m.guidanceCached;
+  }
   return S.mode === 'track'
     ? !!S.activeTrackLesson?.lessonCached
     : !!activeTopic()?.lessonCached;
 }
 
-// True when the current selection has a challenge cached server-side.
+// True when the current selection has a challenge cached server-side. Projects
+// have no separate challenge document — the milestone guidance doubles as the
+// build spec — so this is always false in project mode.
 function activeChallengeCached() {
+  if (S.mode === 'project') return false;
   return S.mode === 'track'
     ? !!S.activeTrackLesson?.challengeCached
     : !!activeTopic()?.challengeCached;
@@ -519,6 +589,11 @@ function showLessonContent(html) {
 
 function loadLesson(force = false) {
   if (S.streaming || !hasSelection()) return;
+  if (S.mode === 'project') {
+    if (briefSelected()) loadProjectBrief(force);
+    else                 loadProjectGuidance(force);
+    return;
+  }
   const key = activeCacheKey();
   $('lesson-empty').classList.add('hidden');
   $('lesson-footer').classList.add('hidden');
@@ -560,6 +635,13 @@ function showChallengeContent(html) {
 
 function loadChallenge(force = false) {
   if (S.streaming || !hasSelection()) return;
+  if (S.mode === 'project') {
+    // The overview/brief has no build step; everything else loads the
+    // milestone guidance, which fills the challenge panel and the editor.
+    if (briefSelected()) { showToast('Pick a milestone to start building', 'info'); return; }
+    loadProjectGuidance(force);
+    return;
+  }
   const key = activeCacheKey();
   $('challenge-empty').classList.add('hidden');
   $('challenge-inner').classList.remove('hidden');
@@ -579,6 +661,84 @@ function loadChallenge(force = false) {
       applyHighlight(out);
       S.challenges[key] = out.innerHTML;
       // Pre-fill editor with starter code if empty
+      const editor = $('code-editor');
+      if (!editor.value.trim()) {
+        const code = extractStarterCode(full);
+        if (code) { editor.value = code; autoResize(editor); }
+      }
+    }
+  );
+}
+
+// ── Project content ────────────────────────────
+// The brief is a project-level spec shown in the Lesson panel only (the
+// overview entry has no build step). Milestone guidance, by contrast, doubles
+// as the build spec: it fills BOTH the Lesson panel ("what to build") and the
+// Challenge panel ("build it"), and seeds the editor with any starter code.
+
+function loadProjectBrief(force = false) {
+  const key = activeCacheKey();
+  $('lesson-empty').classList.add('hidden');
+  $('lesson-footer').classList.add('hidden');
+  const out = $('lesson-output');
+  out.innerHTML = '';
+  out.classList.remove('hidden');
+  out.classList.add('streaming');
+
+  streamFetch(
+    endpoint('lesson'),            // → /api/project/brief
+    reqBody({ force }),
+    (_, acc) => { out.innerHTML = parseMarkdown(acc); },
+    (full) => {
+      out.classList.remove('streaming');
+      out.innerHTML = parseMarkdown(full);
+      applyHighlight(out);
+      $('lesson-footer').classList.remove('hidden');
+      S.lessons[key] = out.innerHTML;
+    }
+  );
+}
+
+function loadProjectGuidance(force = false) {
+  const key = activeCacheKey();
+  // Lesson panel
+  $('lesson-empty').classList.add('hidden');
+  $('lesson-footer').classList.add('hidden');
+  const lout = $('lesson-output');
+  lout.innerHTML = '';
+  lout.classList.remove('hidden');
+  lout.classList.add('streaming');
+  // Challenge panel (same guidance, shown alongside the editor)
+  $('challenge-empty').classList.add('hidden');
+  $('challenge-inner').classList.remove('hidden');
+  closeEval();
+  const cout = $('challenge-output');
+  cout.innerHTML = '';
+  cout.classList.add('streaming');
+
+  streamFetch(
+    endpoint('lesson'),            // → /api/project/milestone
+    reqBody({ force }),
+    (_, acc) => {
+      const html = parseMarkdown(acc);
+      lout.innerHTML = html;
+      cout.innerHTML = html;
+    },
+    (full) => {
+      const html = parseMarkdown(full);
+      lout.classList.remove('streaming');
+      lout.innerHTML = html;
+      applyHighlight(lout);
+      $('lesson-footer').classList.remove('hidden');
+      S.lessons[key] = lout.innerHTML;
+
+      cout.classList.remove('streaming');
+      cout.innerHTML = html;
+      applyHighlight(cout);
+      S.challenges[key] = cout.innerHTML;
+      // The guidance is what submit/hint evaluate against.
+      S.challengeRaw[key] = full;
+
       const editor = $('code-editor');
       if (!editor.value.trim()) {
         const code = extractStarterCode(full);
@@ -711,7 +871,8 @@ async function sendChat() {
 
 // ── Mark complete ──────────────────────────────
 async function toggleComplete() {
-  if (S.mode === 'track') { await toggleTrackComplete(); return; }
+  if (S.mode === 'track')   { await toggleTrackComplete();   return; }
+  if (S.mode === 'project') { await toggleProjectComplete(); return; }
   const t    = activeTopic();
   const next = !t.completed;
   try {
@@ -885,6 +1046,138 @@ async function toggleTrackComplete() {
     renderHeader();
     renderTrackList();
     showToast(next ? '✅ Lesson marked complete!' : 'Marked incomplete', next ? 'success' : 'info');
+  } catch (_) {
+    showToast('Could not save progress', 'error');
+  }
+}
+
+// ── Project sidebar ────────────────────────────
+async function loadProjects() {
+  try {
+    const resp = await fetch(`/api/projects?lang=${S.lang}`);
+    if (resp.status === 401) { showLoginModal(); return; }
+    S.projects = await resp.json();
+  } catch (_) {
+    S.projects = [];
+  }
+  renderProjectList();
+}
+
+function renderProjectList() {
+  const list = $('project-list');
+  list.innerHTML = '';
+  S.projects.forEach(project => {
+    const done     = project.milestones.filter(m => m.completed).length;
+    const isOpen   = !!S.expandedProjects[project.id];
+    const isActive = S.mode === 'project' && S.activeProjectId === project.id;
+    const item = document.createElement('div');
+    item.className = `track-item${isOpen ? ' open' : ''}`;
+    item.innerHTML = `
+      <button class="track-header" onclick="toggleProject('${project.id}')">
+        <span class="track-icon">${project.icon}</span>
+        <span class="track-title">${project.title}</span>
+        <span class="track-progress">${done}/${project.milestones.length}</span>
+        <span class="track-chevron">▶</span>
+      </button>
+      <ul class="track-lessons" id="pl-${project.id}"></ul>`;
+    const ul = item.querySelector('.track-lessons');
+
+    // Overview / brief entry (synthetic milestone id 0).
+    const briefActive = isActive && S.activeProjectMilestone?.id === 0;
+    const bli  = document.createElement('li');
+    const bbtn = document.createElement('button');
+    bbtn.className = `track-lesson-btn${briefActive ? ' active' : ''}`;
+    bbtn.innerHTML = `<span class="tl-num">📋</span><span class="tl-title">Overview</span><span class="tl-done"></span>`;
+    bbtn.addEventListener('click', () => selectProjectMilestone(project.id, 0));
+    bli.appendChild(bbtn);
+    ul.appendChild(bli);
+
+    // Build milestones.
+    project.milestones.forEach(m => {
+      const mActive = isActive && S.activeProjectMilestone?.id === m.id;
+      const li  = document.createElement('li');
+      const btn = document.createElement('button');
+      btn.className = `track-lesson-btn${mActive ? ' active' : ''}${m.completed ? ' done' : ''}`;
+      btn.innerHTML = `<span class="tl-num">${m.id}</span><span class="tl-title">${m.title}</span><span class="tl-done">${m.completed ? '✅' : ''}</span>`;
+      btn.addEventListener('click', () => selectProjectMilestone(project.id, m.id));
+      li.appendChild(btn);
+      ul.appendChild(li);
+    });
+    list.appendChild(item);
+  });
+}
+
+function toggleProject(projectId) {
+  S.expandedProjects[projectId] = !S.expandedProjects[projectId];
+  renderProjectList();
+}
+
+// ── Select project milestone ───────────────────
+function selectProjectMilestone(projectId, milestoneId) {
+  const project = S.projects.find(p => p.id === projectId);
+  if (!project) return;
+
+  let milestone;
+  if (milestoneId === 0) {
+    milestone = { id: 0, title: 'Overview', summary: '', isBrief: true };
+  } else {
+    milestone = project.milestones.find(m => m.id === milestoneId);
+  }
+  if (!milestone) return;
+
+  S.mode                   = 'project';
+  S.activeProjectId        = projectId;
+  S.activeProjectMilestone = milestone;
+  S.expandedProjects[projectId] = true;
+
+  renderProjectList();
+  renderHeader();
+  resetChallengePanel();
+  closeEval();
+  $('code-editor').value = '';
+  renderChat();
+
+  const key = activeCacheKey();
+
+  // Restore the lesson/brief panel: JS cache → server cache → empty state.
+  if (S.lessons[key]) {
+    showLessonContent(S.lessons[key]);
+  } else if (activeLessonCached()) {
+    loadLesson();
+  } else {
+    resetLessonPanel();
+  }
+
+  // For a real milestone, restore the challenge panel from the JS cache too so
+  // the build view is ready without a refetch. (loadLesson above fills both
+  // panels when it has to fetch.)
+  if (!milestone.isBrief && S.challenges[key]) {
+    showChallengeContent(S.challenges[key]);
+  }
+
+  switchTab('lesson');
+}
+
+async function toggleProjectComplete() {
+  const m = S.activeProjectMilestone;
+  if (!m || m.isBrief) return;
+  const next = !m.completed;
+  try {
+    await fetch('/api/progress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lang: S.lang, project_id: S.activeProjectId, milestone_id: m.id, completed: next }),
+    });
+    m.completed = next;
+    // Also update the copy held in S.projects.
+    const project = S.projects.find(p => p.id === S.activeProjectId);
+    if (project) {
+      const ms = project.milestones.find(x => x.id === m.id);
+      if (ms) ms.completed = next;
+    }
+    renderHeader();
+    renderProjectList();
+    showToast(next ? '✅ Milestone marked complete!' : 'Marked incomplete', next ? 'success' : 'info');
   } catch (_) {
     showToast('Could not save progress', 'error');
   }

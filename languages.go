@@ -22,6 +22,28 @@ type Track struct {
 	Lessons     []TrackLesson
 }
 
+// ProjectMilestone is one build step within a project. Unlike a TrackLesson
+// (which is taught), a milestone is something the student builds: the generated
+// guidance describes what to implement, and the student submits code for it.
+type ProjectMilestone struct {
+	ID      int
+	Title   string
+	Summary string // one-liner used to build progressive context for later milestones
+}
+
+// Project is a capstone: a complete application the student builds from scratch
+// across several milestones, bringing together fundamentals and advanced track
+// material. A project has one generated brief (the spec) plus per-milestone
+// build guidance — see project_handlers.go.
+type Project struct {
+	ID          string
+	Title       string
+	Icon        string
+	Description string
+	Goal        string // one-line end goal, fed into the brief and milestone prompts
+	Milestones  []ProjectMilestone
+}
+
 // Language defines a bootcamp language's complete configuration.
 // To add a new language: create a var below and add it to the languages map.
 type Language struct {
@@ -37,7 +59,8 @@ type Language struct {
 	StarterTemplate string
 	SystemPrompt    string
 	Topics          []Topic
-	Tracks          []Track // advanced multi-lesson tracks; nil = no tracks for this language
+	Tracks          []Track   // advanced multi-lesson tracks; nil = no tracks for this language
+	Projects        []Project // capstone projects; nil = no projects for this language
 }
 
 // Category groups related languages together in the UI switcher.
@@ -97,7 +120,8 @@ Style reminder: Go uses camelCase for unexported names and PascalCase for export
 		{ID: 13, Name: "Goroutines & Channels"},
 		{ID: 14, Name: "Closures & Defer"},
 	},
-	Tracks: goTracks,
+	Tracks:   goTracks,
+	Projects: goProjects,
 }
 
 // ── Zig ───────────────────────────────────────────────

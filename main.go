@@ -64,6 +64,14 @@ func main() {
 	http.HandleFunc("/api/track/hint", requireAuth(handleTrackHint))
 	http.HandleFunc("/api/track/chat", requireAuth(handleTrackChat))
 
+	// Capstone projects
+	http.HandleFunc("/api/projects", requireAuth(handleProjects))
+	http.HandleFunc("/api/project/brief", requireAuth(handleProjectBrief))
+	http.HandleFunc("/api/project/milestone", requireAuth(handleProjectMilestone))
+	http.HandleFunc("/api/project/evaluate", requireAuth(handleProjectEvaluate))
+	http.HandleFunc("/api/project/hint", requireAuth(handleProjectHint))
+	http.HandleFunc("/api/project/chat", requireAuth(handleProjectChat))
+
 	log.Printf("🚀  Coding Bootcamp → http://localhost:%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }

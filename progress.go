@@ -65,11 +65,13 @@ func handleProgress(w http.ResponseWriter, r *http.Request, user string) {
 		return
 	}
 	var req struct {
-		Lang      string `json:"lang"`
-		TopicID   int    `json:"topic_id"`  // fundamentals: non-zero
-		TrackID   string `json:"track_id"`  // track: non-empty → key = "track:<id>:<lesson>"
-		LessonID  int    `json:"lesson_id"` // track lesson number
-		Completed bool   `json:"completed"`
+		Lang        string `json:"lang"`
+		TopicID     int    `json:"topic_id"`     // fundamentals: non-zero
+		TrackID     string `json:"track_id"`     // track: non-empty → key = "track:<id>:<lesson>"
+		LessonID    int    `json:"lesson_id"`    // track lesson number
+		ProjectID   string `json:"project_id"`   // project: non-empty → key = "project:<id>:<milestone>"
+		MilestoneID int    `json:"milestone_id"` // project milestone number
+		Completed   bool   `json:"completed"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonErr(w, 400, "invalid request")
@@ -81,9 +83,12 @@ func handleProgress(w http.ResponseWriter, r *http.Request, user string) {
 	}
 
 	var key string
-	if req.TrackID != "" {
+	switch {
+	case req.ProjectID != "":
+		key = fmt.Sprintf("project:%s:%d", req.ProjectID, req.MilestoneID)
+	case req.TrackID != "":
 		key = fmt.Sprintf("track:%s:%d", req.TrackID, req.LessonID)
-	} else {
+	default:
 		key = fmt.Sprintf("%d", req.TopicID)
 	}
 
