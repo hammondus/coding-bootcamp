@@ -43,14 +43,11 @@ func loadLessonCache() {
 }
 
 func saveLessonCache() {
-	lessonCacheMu.RLock()
-	data, err := json.MarshalIndent(lessonCache, "", "  ")
-	lessonCacheMu.RUnlock()
-	if err != nil {
-		log.Printf("saveLessonCache: %v", err)
-		return
-	}
-	writeFileAtomic(cacheFile, data, 0644)
+	writeFileAtomic(cacheFile, 0644, func() ([]byte, error) {
+		lessonCacheMu.RLock()
+		defer lessonCacheMu.RUnlock()
+		return json.MarshalIndent(lessonCache, "", "  ")
+	})
 }
 
 // cacheGet returns the user's cached content for a key, if present.

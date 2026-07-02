@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -20,6 +21,14 @@ const (
 	// model        = "claude-sonnet-4-6"
 	model      = "claude-opus-4-8"
 	maxRetries = 3
+	// maxTokens needs headroom: a full lesson (overview, 5–7 concepts, two code
+	// examples, pitfalls) regularly runs past small caps, and a capped response
+	// is a silently truncated lesson.
+	maxTokens = 8192
+	// streamTimeout caps one whole streaming call, retries included. The
+	// client's ResponseHeaderTimeout only guards the wait for the *first* byte;
+	// this guards against an upstream that stalls midway through the body.
+	streamTimeout = 5 * time.Minute
 )
 
 // anthropicClient is a shared HTTP client configured for the Anthropic
@@ -55,6 +64,11 @@ type Message struct {
 func streamFromAnthropic(ctx context.Context, w http.ResponseWriter, system, prompt string, messages []Message, onComplete ...func(string)) {
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 
+	// Overall deadline so a stalled upstream can never hang a request forever.
+	// Cancelling also releases the upstream connection when we return early.
+	ctx, cancel := context.WithTimeout(ctx, streamTimeout)
+	defer cancel()
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -86,7 +100,7 @@ func streamFromAnthropic(ctx context.Context, w http.ResponseWriter, system, pro
 
 	reqBody, _ := json.Marshal(map[string]interface{}{
 		"model":      model,
-		"max_tokens": 2048,
+		"max_tokens": maxTokens,
 		"system":     system,
 		"messages":   msgs,
 		"stream":     true,
@@ -121,7 +135,7 @@ func streamFromAnthropic(ctx context.Context, w http.ResponseWriter, system, pro
 
 		resp, err = anthropicClient.Do(req)
 		if err != nil {
-			if ctx.Err() != nil {
+			if errors.Is(ctx.Err(), context.Canceled) {
 				return // client disconnected; nothing to report
 			}
 			sendErr("Could not reach Anthropic API: " + err.Error())
@@ -152,7 +166,11 @@ func streamFromAnthropic(ctx context.Context, w http.ResponseWriter, system, pro
 	}
 	defer resp.Body.Close()
 
-	var buf strings.Builder // accumulate for the optional onComplete callback
+	var (
+		buf            strings.Builder // accumulate for the optional onComplete callback
+		sawMessageStop bool            // upstream sent its terminal event — the response is whole
+		stopReason     string          // from message_delta: "end_turn", "max_tokens", ...
+	)
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // tolerate long SSE lines
 stream:
@@ -163,6 +181,7 @@ stream:
 		}
 		data := strings.TrimPrefix(line, "data: ")
 		if data == "[DONE]" {
+			sawMessageStop = true
 			break stream
 		}
 		var event map[string]interface{}
@@ -170,8 +189,29 @@ stream:
 			continue
 		}
 		switch event["type"] {
+		case "error":
+			// The API can also fail mid-stream (e.g. overloaded_error) as an
+			// SSE event rather than an HTTP status. Surface it to the browser
+			// instead of letting the text silently stop.
+			msg := "unknown upstream error"
+			if e, ok := event["error"].(map[string]interface{}); ok {
+				if m, ok := e["message"].(string); ok && m != "" {
+					msg = m
+				}
+			}
+			sendErr("Anthropic API error: " + msg)
+			return
+		case "message_delta":
+			// Carries the stop_reason. "max_tokens" means the reply was cut
+			// off by the cap, so it must not be cached as a complete lesson.
+			if delta, ok := event["delta"].(map[string]interface{}); ok {
+				if sr, ok := delta["stop_reason"].(string); ok && sr != "" {
+					stopReason = sr
+				}
+			}
 		case "message_stop":
 			// Anthropic's terminal event — the stream is done.
+			sawMessageStop = true
 			break stream
 		case "content_block_delta":
 			delta, _ := event["delta"].(map[string]interface{})
@@ -186,21 +226,41 @@ stream:
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		log.Printf("stream read error: %v", err)
+	// The stream can end because the context died: a plain cancel means the
+	// client disconnected (nobody is listening — write nothing), while a
+	// deadline means streamTimeout fired on a stalled upstream. Either way,
+	// never cache what could be a partial response.
+	if ctx.Err() != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			sendErr("Stream timed out — try again.")
+		}
+		return
 	}
 
-	// If the client disconnected, don't bother writing the terminator or
-	// caching what could be a partial response.
-	if ctx.Err() != nil {
+	if err := scanner.Err(); err != nil {
+		log.Printf("stream read error: %v", err)
+		sendErr("Stream interrupted — try again.")
+		return
+	}
+
+	// A premature EOF is not a scanner error, so reaching here without the
+	// terminal event means the upstream dropped the connection mid-response.
+	// Report it rather than passing truncated text off as a finished lesson.
+	if !sawMessageStop {
+		sendErr("Stream ended unexpectedly — try again.")
 		return
 	}
 
 	fmt.Fprintf(w, "data: [DONE]\n\n")
 	flusher.Flush()
 
-	clean := scanner.Err() == nil
-	if clean && len(onComplete) > 0 && onComplete[0] != nil && buf.Len() > 0 {
+	// Only a verifiably complete response goes in the cache: message_stop was
+	// seen (checked above) and the model wasn't cut off by the max_tokens cap.
+	if stopReason == "max_tokens" {
+		log.Printf("stream hit the max_tokens cap (%d) — truncated response not cached", maxTokens)
+		return
+	}
+	if len(onComplete) > 0 && onComplete[0] != nil && buf.Len() > 0 {
 		onComplete[0](buf.String())
 	}
 }

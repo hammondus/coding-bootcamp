@@ -25,20 +25,25 @@ func loadProgress() {
 	if err != nil {
 		return
 	}
+	// Decode into a temp first so a corrupt file leaves the live map clean and
+	// logs loudly instead of silently half-loading. (Same pattern as
+	// loadLessonCache.)
+	var loaded map[string]map[string]map[string]bool
+	if err := json.Unmarshal(data, &loaded); err != nil {
+		log.Printf("loadProgress: ignoring unreadable %s: %v", progressFile, err)
+		return
+	}
 	progressMu.Lock()
 	defer progressMu.Unlock()
-	json.Unmarshal(data, &progress)
+	progress = loaded
 }
 
 func saveProgress() {
-	progressMu.RLock()
-	data, err := json.MarshalIndent(progress, "", "  ")
-	progressMu.RUnlock()
-	if err != nil {
-		log.Printf("saveProgress: %v", err)
-		return
-	}
-	writeFileAtomic(progressFile, data, 0644)
+	writeFileAtomic(progressFile, 0644, func() ([]byte, error) {
+		progressMu.RLock()
+		defer progressMu.RUnlock()
+		return json.MarshalIndent(progress, "", "  ")
+	})
 }
 
 // getUserLangProgress returns a copy of the user's completion map for a
@@ -77,18 +82,40 @@ func handleProgress(w http.ResponseWriter, r *http.Request, user string) {
 		jsonErr(w, 400, "invalid request")
 		return
 	}
-	if _, ok := languages[req.Lang]; !ok {
+	lang, ok := languages[req.Lang]
+	if !ok {
 		jsonErr(w, 400, "unknown language")
 		return
 	}
 
+	// Validate the ID against the curriculum before persisting, so a stale or
+	// buggy client can't pollute progress.json with keys that don't exist.
 	var key string
 	switch {
 	case req.ProjectID != "":
+		if _, _, ok := findProjectMilestone(lang, req.ProjectID, req.MilestoneID); !ok {
+			jsonErr(w, 400, "unknown project or milestone")
+			return
+		}
 		key = fmt.Sprintf("project:%s:%d", req.ProjectID, req.MilestoneID)
 	case req.TrackID != "":
+		if _, _, ok := findTrackLesson(lang, req.TrackID, req.LessonID); !ok {
+			jsonErr(w, 400, "unknown track or lesson")
+			return
+		}
 		key = fmt.Sprintf("track:%s:%d", req.TrackID, req.LessonID)
 	default:
+		found := false
+		for _, t := range lang.Topics {
+			if t.ID == req.TopicID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			jsonErr(w, 400, "unknown topic")
+			return
+		}
 		key = fmt.Sprintf("%d", req.TopicID)
 	}
 

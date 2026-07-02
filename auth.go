@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
@@ -42,26 +43,42 @@ func loadUsers() {
 	if err != nil {
 		return
 	}
+	// Decode into a temp first so a corrupt file leaves the live map clean and
+	// logs loudly, rather than silently starting with a half-populated map
+	// that the next save would write back over the real data. (Same pattern
+	// as loadLessonCache.)
+	var loaded map[string]UserRecord
+	if err := json.Unmarshal(data, &loaded); err != nil {
+		log.Printf("loadUsers: ignoring unreadable %s: %v", usersFile, err)
+		return
+	}
 	usersMu.Lock()
 	defer usersMu.Unlock()
-	json.Unmarshal(data, &users)
+	users = loaded
 }
 
 func saveUsers() {
-	usersMu.RLock()
-	data, err := json.MarshalIndent(users, "", "  ")
-	usersMu.RUnlock()
-	if err != nil {
-		log.Printf("saveUsers: %v", err)
-		return
-	}
-	writeFileAtomic(usersFile, data, 0600)
+	writeFileAtomic(usersFile, 0600, func() ([]byte, error) {
+		usersMu.RLock()
+		defer usersMu.RUnlock()
+		return json.MarshalIndent(users, "", "  ")
+	})
 }
 
 // ── Sessions ──────────────────────────────────────────
 
+// sessionTTL matches the session cookie's MaxAge, so a token the browser has
+// already discarded doesn't live on forever in sessions.json.
+const sessionTTL = 30 * 24 * time.Hour
+
+// Session records who a token belongs to and when it was issued.
+type Session struct {
+	User    string    `json:"user"`
+	Created time.Time `json:"created"`
+}
+
 var (
-	sessions   = map[string]string{} // token → username
+	sessions   = map[string]Session{} // token → session
 	sessionsMu sync.RWMutex
 )
 
@@ -70,20 +87,31 @@ func loadSessions() {
 	if err != nil {
 		return
 	}
+	// Temp-decode for the same reason as loadUsers. An older sessions file
+	// (the pre-timestamp token→username format) fails here and is dropped —
+	// everyone just signs in again.
+	var loaded map[string]Session
+	if err := json.Unmarshal(data, &loaded); err != nil {
+		log.Printf("loadSessions: ignoring unreadable %s: %v", sessionsFile, err)
+		return
+	}
+	// Prune expired tokens so the file doesn't accumulate them forever.
+	for token, s := range loaded {
+		if time.Since(s.Created) > sessionTTL {
+			delete(loaded, token)
+		}
+	}
 	sessionsMu.Lock()
 	defer sessionsMu.Unlock()
-	json.Unmarshal(data, &sessions)
+	sessions = loaded
 }
 
 func saveSessions() {
-	sessionsMu.RLock()
-	data, err := json.MarshalIndent(sessions, "", "  ")
-	sessionsMu.RUnlock()
-	if err != nil {
-		log.Printf("saveSessions: %v", err)
-		return
-	}
-	writeFileAtomic(sessionsFile, data, 0600)
+	writeFileAtomic(sessionsFile, 0600, func() ([]byte, error) {
+		sessionsMu.RLock()
+		defer sessionsMu.RUnlock()
+		return json.MarshalIndent(sessions, "", "  ")
+	})
 }
 
 func getSessionUser(r *http.Request) (string, bool) {
@@ -98,8 +126,11 @@ func getSessionUser(r *http.Request) (string, bool) {
 	}
 	sessionsMu.RLock()
 	defer sessionsMu.RUnlock()
-	user, ok := sessions[c.Value]
-	return user, ok
+	s, ok := sessions[c.Value]
+	if !ok || time.Since(s.Created) > sessionTTL {
+		return "", false
+	}
+	return s.User, true
 }
 
 // requireAuth wraps a handler that needs a username.
@@ -195,7 +226,7 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	token := newToken()
 	sessionsMu.Lock()
-	sessions[token] = req.Username
+	sessions[token] = Session{User: req.Username, Created: time.Now()}
 	sessionsMu.Unlock()
 	saveSessions()
 
@@ -230,7 +261,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	token := newToken()
 	sessionsMu.Lock()
-	sessions[token] = req.Username
+	sessions[token] = Session{User: req.Username, Created: time.Now()}
 	sessionsMu.Unlock()
 	saveSessions()
 
@@ -239,6 +270,10 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleLogout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	if c, err := r.Cookie("session"); err == nil {
 		sessionsMu.Lock()
 		delete(sessions, c.Value)

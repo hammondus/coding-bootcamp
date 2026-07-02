@@ -198,7 +198,17 @@ async function streamFetch(url, body, onChunk, onDone) {
       body: JSON.stringify(body),
     });
     if (!resp.ok) {
-      if (resp.status === 401) { showLoginModal(); S.streaming = false; return; }
+      if (resp.status === 401) {
+        // Session expired mid-request. Fold a message into the panel and call
+        // onDone so the caller cleans up its streaming state (the panel would
+        // otherwise be stuck behind the login modal mid-"stream").
+        showLoginModal();
+        accumulated += '\n\n**Session expired** — sign in and try again.';
+        onChunk(accumulated, accumulated);
+        S.streaming = false;
+        onDone(accumulated);
+        return;
+      }
       const err = await resp.text();
       onChunk(`\n\n**Error ${resp.status}**: ${err}`, err);
       onDone(err);
@@ -322,17 +332,11 @@ async function loadLanguages() {
     const resp = await fetch('/api/languages');
     S.cats = await resp.json();
   } catch (_) {
-    S.cats = [
-      { id: 'backend', name: 'Backend', languages: [
-        { id: 'go',  name: 'Go',  icon: '/static/icons/go.svg', cmd: '$ go run .', accentColor: '#00ADD8', accentDark: '#007fa0', accentGlow: 'rgba(0,173,216,0.15)', codeLabel: 'GO' },
-        { id: 'zig', name: 'Zig', icon: '/static/icons/zig.svg', cmd: '$ zig build run', accentColor: '#F7A41D', accentDark: '#C47D0A', accentGlow: 'rgba(247,164,29,0.15)', codeLabel: 'ZIG' },
-      ]},
-      { id: 'frontend', name: 'Frontend', languages: [
-        { id: 'javascript', name: 'JavaScript', icon: '/static/icons/javascript.svg', cmd: '$ node app.js', accentColor: '#F7DF1E', accentDark: '#C7B100', accentGlow: 'rgba(247,223,30,0.15)', codeLabel: 'JS' },
-        { id: 'html', name: 'HTML', icon: '/static/icons/html.svg', cmd: '$ open index.html', accentColor: '#E34F26', accentDark: '#B23318', accentGlow: 'rgba(227,79,38,0.15)', codeLabel: 'HTML' },
-        { id: 'css',  name: 'CSS',  icon: '/static/icons/css.svg', cmd: '$ open index.html', accentColor: '#1572B6', accentDark: '#0E4F7E', accentGlow: 'rgba(21,114,182,0.15)', codeLabel: 'CSS' },
-      ]},
-    ];
+    // If /api/languages is unreachable the server is down and nothing else
+    // will work either — say so instead of carrying a stale duplicate of the
+    // backend's language list here.
+    S.cats = [];
+    showToast('Could not load languages — is the server running?', 'error');
   }
   // Flatten into a single ordered list for lookups by id elsewhere.
   S.langs = S.cats.flatMap(c => c.languages);
@@ -379,7 +383,9 @@ async function switchLang(id, reset = true) {
   if (!lang) return;
   S.lang = id;
   S.mode = 'fundamentals';
-  // Project selections don't carry across languages (different projects).
+  // Track and project selections don't carry across languages.
+  S.activeTrackId = null;
+  S.activeTrackLesson = null;
   S.activeProjectId = null;
   S.activeProjectMilestone = null;
   applyLangTheme(lang);
@@ -770,8 +776,11 @@ function submitCode() {
       out.classList.remove('streaming');
       out.innerHTML = parseMarkdown(full);
       applyHighlight(out);
-      const lower = full.toLowerCase();
-      if (full.includes('✅') && (lower.includes('pass') || lower.includes('correct') || lower.includes('well done'))) {
+      // Judge only the verdict line (the first line containing ✅ or ❌) —
+      // scanning the whole response false-positives when a ❌ verdict's body
+      // happens to mention "pass" or use a ✅ elsewhere.
+      const verdictLine = full.split('\n').find(l => l.includes('✅') || l.includes('❌')) || '';
+      if (verdictLine.includes('✅') && verdictLine.toLowerCase().includes('pass')) {
         showToast('✅ Challenge passed! Great work!', 'success');
       }
     }
@@ -1185,6 +1194,13 @@ async function toggleProjectComplete() {
 
 // ── Post-auth init ─────────────────────────────
 async function postAuthInit() {
+  // A fresh login can follow an expired session whose failed loads left error
+  // text in the JS content caches — start clean so it can't resurface.
+  S.lessons      = {};
+  S.challenges   = {};
+  S.challengeRaw = {};
+  S.chatHistory  = {};
+
   $('username-display').textContent = S.user;
 
   const defaultLang = S.langs[0]?.id || 'go';
