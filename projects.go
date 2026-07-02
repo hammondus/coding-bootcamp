@@ -53,4 +53,32 @@ var goProjects = []Project{
 			{5, "Usernames, Join/Leave & Cleanup", "Names on join, broadcast join/leave notices, and graceful disconnect cleanup with no goroutine leaks"},
 		},
 	},
+	{
+		// The grand finale: the student rebuilds this very application. It is
+		// deliberately full-stack — each milestone is a vertical slice, so the
+		// Go backend and the vanilla JS frontend grow together rather than one
+		// being finished before the other starts.
+		ID:          "build-this-bootcamp",
+		Title:       "Build This Bootcamp",
+		Icon:        "🎓",
+		Description: "The grand finale: rebuild this very bootcamp from scratch — a Go standard-library backend streaming AI-generated lessons over SSE to a vanilla HTML/CSS/JS frontend, with auth, sessions, per-user caching, progress tracking, and atomic JSON persistence. Built in vertical slices, backend and frontend together.",
+		Goal:        "a complete AI-powered bootcamp web app — the very one you are using right now: a Go standard-library backend with cookie-session auth, mutex-guarded in-memory state, atomic JSON-file persistence, and a per-user lesson cache, streaming AI-generated lessons, challenge evaluations, hints, and chat from the Claude API over SSE to a vanilla HTML/CSS/JS single-page frontend with no build step. Every milestone is a vertical slice: the backend feature and the frontend that exercises it land together, so the app is runnable end-to-end at every step.",
+		Milestones: []ProjectMilestone{
+			{1, "Server Skeleton & App Shell", "A Go net/http server serving a static/ directory (port from an env var), plus the HTML/CSS shell of the single-page app: header, sidebar, and main content panel"},
+			{2, "JSON API & Dynamic Boot", "jsonOK/jsonErr/decodePOST helpers, a /api/languages endpoint fed from an in-code config map, and app.js fetching it on load to render the language picker"},
+			{3, "User Accounts", "An RWMutex-guarded in-memory user store with salted password hashing, a register endpoint, and the registration form wired to it"},
+			{4, "Login, Sessions & Cookies", "Random session tokens in their own mutex-guarded map, set as an HttpOnly cookie on login, with the login screen, logout flow, and session-aware boot in the UI"},
+			{5, "The requireAuth Middleware", "A handler wrapper that resolves the session cookie to a username and passes it to every protected endpoint, with the frontend returning to the login screen on a 401"},
+			{6, "Atomic JSON Persistence", "A writeFileAtomic helper (marshal under a save mutex, write a .tmp file, rename into place) plus loaders that decode into a temp variable so a corrupt file can't half-populate live state — users and sessions now survive a restart"},
+			{7, "Streaming from Claude", "A backend proxy that calls the Claude API with stream:true, parses the upstream SSE events, and forwards text deltas to the browser as its own SSE stream, cancelling the upstream call when the client disconnects"},
+			{8, "Rendering the Stream", "Frontend code that reads the SSE response with fetch and renders markdown incrementally as deltas arrive, with loading and error states"},
+			{9, "The Lesson Curriculum", "A per-language topic list endpoint and prompt builders that generate complete lessons, plus the sidebar topic navigation and lesson view that display them"},
+			{10, "Per-User Lesson Cache", "A username → key → markdown cache guarded by its own RWMutex, checked before calling the API, persisted with a background save, and replayed instantly to the browser on a hit"},
+			{11, "Progress Tracking", "A per-user progress store with a toggle-complete endpoint, snapshot-copied under RLock when building responses, with completion ticks appearing in the sidebar"},
+			{12, "Challenges & Evaluation", "A challenge generator, a code submission editor in the UI, and an evaluate endpoint that streams back a structured pass/needs-work review"},
+			{13, "Hints & Contextual Chat", "A single-nudge hint endpoint and a chat panel whose system prompt is grounded in the current lesson and the student's code, so answers stay on topic"},
+			{14, "Hardening the Stream", "Dial/response timeouts and an overall per-call deadline, bounded backoff retries on 429/529/5xx before the first byte is streamed, forwarding upstream error events to the browser, and caching only after a clean message_stop"},
+			{15, "Dev Mode & the Race Detector", "A -dev flag that bypasses login for local testing, then a full go vet and go run -race pass over every feature to prove the concurrency story holds"},
+		},
+	},
 }
