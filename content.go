@@ -259,6 +259,12 @@ Specific bugs, logical errors, or style issues. Write "None — looks good!" if 
 ## Suggested Improvement (if needed)
 A corrected or more idiomatic version. Skip if the code passed cleanly.
 
+The challenge requirements are the specification. If the code does something because
+the requirements explicitly ask for it — even if it goes against a general convention
+or something the lesson teaches — do not flag it as an issue or style problem. A brief
+"in real-world code you'd usually..." aside is fine, but the verdict and Issues section
+must judge the code against the requirements as written.
+
 Be encouraging and educational. Note: code cannot be executed — evaluate on logic and conventions.`,
 		lang.Name, req.TopicID, req.TopicName,
 		req.Challenge,

@@ -314,6 +314,12 @@ Specific bugs, logical errors, or style issues. Write "None — looks good!" if 
 ## Suggested Improvement (if needed)
 A corrected or more idiomatic version of the relevant part. Skip if the code passed cleanly.
 
+The milestone guidance is the specification. If the code does something because the
+guidance explicitly asks for it — even if it goes against a general convention — do not
+flag it as an issue or style problem. A brief "in real-world code you'd usually..."
+aside is fine, but the verdict and Issues section must judge the code against the
+guidance as written.
+
 Be encouraging. Note: code cannot be executed — evaluate on logic and conventions.`,
 		lang.Name, project.Title, milestone.ID, milestone.Title,
 		req.Challenge,
