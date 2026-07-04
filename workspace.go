@@ -54,6 +54,9 @@ func trackChatStoreKey(langID, trackID string, lessonID int) string {
 func projectChatStoreKey(langID, projectID string, milestoneID int) string {
 	return fmt.Sprintf("%s:project:%s:chat:%d", langID, projectID, milestoneID)
 }
+func setupChatStoreKey(langID string) string {
+	return fmt.Sprintf("%s:setup:chat", langID)
+}
 
 func loadWorkspaces() {
 	data, err := os.ReadFile(workspaceFile)

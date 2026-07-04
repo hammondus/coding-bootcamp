@@ -60,6 +60,11 @@ func main() {
 	http.HandleFunc("/api/chat", requireAuth(handleChat))
 	http.HandleFunc("/api/workspace", requireAuth(handleWorkspace))
 
+	// Getting Started guide — hand-written markdown, not generated (setup.go)
+	http.HandleFunc("/api/setup", requireAuth(handleSetup))
+	http.HandleFunc("/api/setup/chat", requireAuth(handleSetupChat))
+	http.HandleFunc("/api/setup/workspace", requireAuth(handleSetupWorkspace))
+
 	// Advanced tracks
 	http.HandleFunc("/api/tracks", requireAuth(handleTracks))
 	http.HandleFunc("/api/track/lesson", requireAuth(handleTrackLesson))

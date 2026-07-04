@@ -32,7 +32,7 @@ const S = {
   streaming:    false,
 
   // ── Track state ───────────────────────────
-  mode:              'fundamentals', // 'fundamentals' | 'track' | 'project'
+  mode:              'fundamentals', // 'fundamentals' | 'track' | 'project' | 'setup'
   tracks:            [],             // [{id, title, icon, description, lessons:[...]}]
   activeTrackId:     null,
   activeTrackLesson: null,           // {id, title, summary, completed, lessonCached}
@@ -72,6 +72,7 @@ function projectCacheKey(projectId, milestoneId) {
   return `${S.lang}:project:${projectId}:${milestoneId}`;
 }
 function activeCacheKey() {
+  if (S.mode === 'setup') return `${S.lang}:setup`;
   if (S.mode === 'track' && S.activeTrackId && S.activeTrackLesson) {
     return trackCacheKey(S.activeTrackId, S.activeTrackLesson.id);
   }
@@ -99,6 +100,10 @@ function briefSelected() {
 // These collapse the old fundamentals/track function pairs into one each:
 // the endpoint prefix and body shape are the only things that differed.
 function endpoint(action) {
+  // The Getting Started page only ever asks for 'chat' and 'workspace' — its
+  // guide comes from /api/setup directly (see loadSetupGuide), and it has no
+  // challenge, evaluate, or hint.
+  if (S.mode === 'setup') return `/api/setup/${action}`;
   if (S.mode === 'project') {
     // The "lesson" action maps to the brief for the overview entry, or the
     // milestone guidance for a real milestone. Everything else (evaluate, hint,
@@ -110,6 +115,9 @@ function endpoint(action) {
 }
 
 function reqBody(extra = {}) {
+  if (S.mode === 'setup') {
+    return { lang: S.lang, ...extra };
+  }
   if (S.mode === 'project') {
     return { lang: S.lang, project_id: S.activeProjectId, milestone_id: S.activeProjectMilestone?.id, ...extra };
   }
@@ -433,9 +441,19 @@ function updateProgress() {
 function renderTopics() {
   const nav = $('topic-list');
   nav.innerHTML = '';
+
+  // Pinned Getting Started entry — a hand-written setup guide, not a topic:
+  // no number, no challenge, and it never counts toward progress.
+  const setup = el('button', `topic-btn setup-btn${S.mode === 'setup' ? ' active' : ''}`);
+  setup.innerHTML = `<span class="topic-icon">🧭</span><span class="topic-name">Getting Started</span><span class="topic-num"></span>`;
+  setup.addEventListener('click', selectSetup);
+  nav.appendChild(setup);
+  nav.appendChild(el('div', 'setup-divider'));
+
   S.topics.forEach(t => {
-    const icon   = t.completed ? '✅' : (t.id === S.activeId ? '▶' : '○');
-    const btn    = el('button', `topic-btn${t.id === S.activeId ? ' active' : ''}${t.completed ? ' done' : ''}`);
+    const isCurrent = S.mode === 'fundamentals' && t.id === S.activeId;
+    const icon   = t.completed ? '✅' : (isCurrent ? '▶' : '○');
+    const btn    = el('button', `topic-btn${isCurrent ? ' active' : ''}${t.completed ? ' done' : ''}`);
     btn.innerHTML = `<span class="topic-icon">${icon}</span><span class="topic-name">${t.name}</span><span class="topic-num">${t.id}</span>`;
     btn.addEventListener('click', () => selectTopic(t.id));
     nav.appendChild(btn);
@@ -451,6 +469,21 @@ function renderHeader() {
   // The brief hides the complete button; make sure it's visible again for
   // every other selection (the button is shared across all three modes).
   $('complete-btn').style.visibility = '';
+
+  // The Getting Started page has no challenge, so its tab disappears while
+  // the guide is selected (and comes back with any other selection).
+  document.querySelector('.tab[data-tab="challenge"]')
+    .classList.toggle('hidden', S.mode === 'setup');
+
+  if (S.mode === 'setup') {
+    const lang = S.langs.find(l => l.id === S.lang);
+    $('header-badge').textContent    = '🧭 Guide';
+    $('header-title').textContent    = `Getting Started with ${lang?.name || '…'}`;
+    $('chat-topic-name').textContent = 'getting set up';
+    // A guide isn't completable — there's nothing to mark.
+    $('complete-btn').style.visibility = 'hidden';
+    return;
+  }
 
   if (S.mode === 'project' && S.activeProjectId && S.activeProjectMilestone) {
     const project = S.projects.find(p => p.id === S.activeProjectId);
@@ -579,6 +612,7 @@ function switchTab(tab) {
 // True when the current selection has a lesson (or brief/guidance) cached
 // server-side.
 function activeLessonCached() {
+  if (S.mode === 'setup') return true; // the guide is a static file — always there
   if (S.mode === 'project') {
     const m = S.activeProjectMilestone;
     if (!m) return false;
@@ -624,6 +658,7 @@ function showLessonContent(html) {
 
 function loadLesson(force = false) {
   if (S.streaming || !hasSelection()) return;
+  if (S.mode === 'setup') { loadSetupGuide(); return; }
   if (S.mode === 'project') {
     if (briefSelected()) loadProjectBrief(force);
     else                 loadProjectGuidance(force);
@@ -649,6 +684,58 @@ function loadLesson(force = false) {
       S.lessons[key] = out.innerHTML;
     }
   );
+}
+
+// ── Getting Started guide ──────────────────────
+// The pinned sidebar entry. It behaves like a lesson-only topic: the guide
+// (hand-written markdown from /api/setup — no generation, no streaming, no
+// token cost) fills the lesson panel, the challenge tab is hidden, and the
+// Ask tab chats about environment setup instead of a topic.
+
+function selectSetup() {
+  S.mode = 'setup';
+  renderTopics();
+  renderHeader();
+  renderChat();
+  // The challenge tab doesn't exist here; land on the lesson tab instead.
+  // switchTab's lazy-load path fetches the guide via loadLesson when needed.
+  switchTab(S.activeTab === 'challenge' ? 'lesson' : S.activeTab);
+  loadSetupGuide();
+  loadWorkspace(); // restore any saved setup chat
+}
+
+// Guards against double-fetching: selectSetup and switchTab can both ask for
+// the guide in the same click before the first response lands.
+let setupGuideLoading = false;
+
+async function loadSetupGuide() {
+  const key = activeCacheKey(); // "<lang>:setup"
+  if (!S.lessons[key]) {
+    if (setupGuideLoading) return;
+    setupGuideLoading = true;
+    $('lesson-empty').classList.add('hidden');
+    $('lesson-footer').classList.add('hidden');
+    const out = $('lesson-output');
+    out.innerHTML = '';
+    out.classList.remove('hidden');
+    try {
+      const resp = await fetch(`/api/setup?lang=${S.lang}`);
+      if (resp.status === 401) { showLoginModal(); return; }
+      if (!resp.ok) throw new Error((await resp.json()).error || `error ${resp.status}`);
+      const data = await resp.json();
+      S.lessons[key] = parseMarkdown(data.markdown);
+    } catch (err) {
+      out.innerHTML = `<p><strong>Could not load the guide</strong>: ${err.message}</p>`;
+      return;
+    } finally {
+      setupGuideLoading = false;
+    }
+  }
+  // The user may have clicked elsewhere while this fetched.
+  if (S.mode !== 'setup' || key !== activeCacheKey()) return;
+  showLessonContent(S.lessons[key]);
+  // No Regenerate or Try Challenge for a static guide.
+  $('lesson-footer').classList.add('hidden');
 }
 
 // ── Challenge panel ────────────────────────────
