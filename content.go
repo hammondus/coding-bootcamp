@@ -37,6 +37,68 @@ func lessonContextBlock(user, lessonKey string) string {
 	return ""
 }
 
+// ── Challenge difficulty tiers ────────────────────────
+//
+// Every lesson offers its challenge at four difficulty tiers. Each tier is
+// generated and cached separately, so a student can warm up on Beginner and
+// work up to GOAT on the same topic without losing the easier versions.
+
+// difficultyOrder is the canonical tier order shown in the UI.
+var difficultyOrder = []string{"beginner", "intermediate", "advanced", "goat"}
+
+// difficultySpec maps a tier to its display label and the brief given to the
+// model when generating a challenge at that tier.
+var difficultySpec = map[string]struct {
+	Label string
+	Brief string
+}{
+	"beginner": {
+		Label: "Beginner",
+		Brief: "A gentle warm-up. One small, clearly scoped task using only the most basic form of the topic. Generous starter code. Completable in ~10 minutes.",
+	},
+	"intermediate": {
+		Label: "Intermediate",
+		Brief: "A practical task that combines the topic with everyday programming (conditionals, loops, simple data structures). Some starter code, but the student writes all the interesting parts. Completable in ~20 minutes.",
+	},
+	"advanced": {
+		Label: "Advanced",
+		Brief: "A demanding challenge that stretches the topic: edge cases, several interacting requirements, minimal hand-holding. Starter code is a bare skeleton. Completable in ~30–40 minutes.",
+	},
+	"goat": {
+		Label: "GOAT 🐐",
+		Brief: "Greatest Of All Time: a brutally hard challenge for bragging rights. Push the topic to its limits — tricky constraints, nasty edge cases, a correctness or performance twist — and give no starter code beyond an empty function or file skeleton. May take an hour or more, but it must still be solvable with this topic plus general fundamentals.",
+	},
+}
+
+// normalizeDifficulty maps a client-supplied difficulty to a known tier,
+// defaulting to beginner so older clients (which send no difficulty) work.
+func normalizeDifficulty(d string) string {
+	if _, ok := difficultySpec[d]; ok {
+		return d
+	}
+	return "beginner"
+}
+
+// challengeCacheKey names a fundamentals challenge at a difficulty tier.
+// Beginner keeps the pre-tier key ("go:challenge:1") so challenges generated
+// before tiers existed still show up as the Beginner tier instead of being
+// orphaned in the cache file.
+func challengeCacheKey(langID string, topicID int, diff string) string {
+	if diff == "beginner" {
+		return fmt.Sprintf("%s:challenge:%d", langID, topicID)
+	}
+	return fmt.Sprintf("%s:challenge:%d:%s", langID, topicID, diff)
+}
+
+// trackChallengeCacheKey is the advanced-track equivalent of
+// challengeCacheKey, with the same legacy-beginner rule.
+func trackChallengeCacheKey(langID, trackID string, lessonID int, diff string) string {
+	if diff == "beginner" {
+		return fmt.Sprintf("%s:track:%s:challenge:%d", langID, trackID, lessonID)
+	}
+	return fmt.Sprintf("%s:track:%s:challenge:%d:%s", langID, trackID, lessonID, diff)
+}
+
 // ── Language handler ──────────────────────────────────
 
 func handleLanguages(w http.ResponseWriter, r *http.Request) {
@@ -89,20 +151,25 @@ func handleTopics(w http.ResponseWriter, r *http.Request, user string) {
 	done := getUserLangProgress(user, langID)
 
 	type TopicResp struct {
-		ID              int    `json:"id"`
-		Name            string `json:"name"`
-		Completed       bool   `json:"completed"`
-		LessonCached    bool   `json:"lessonCached"`
-		ChallengeCached bool   `json:"challengeCached"`
+		ID           int    `json:"id"`
+		Name         string `json:"name"`
+		Completed    bool   `json:"completed"`
+		LessonCached bool   `json:"lessonCached"`
+		// One flag per difficulty tier, e.g. {"beginner": true, "goat": false}.
+		ChallengeCached map[string]bool `json:"challengeCached"`
 	}
 	result := make([]TopicResp, len(lang.Topics))
 	for i, t := range lang.Topics {
+		challenges := make(map[string]bool, len(difficultyOrder))
+		for _, d := range difficultyOrder {
+			challenges[d] = cacheHas(user, challengeCacheKey(langID, t.ID, d))
+		}
 		result[i] = TopicResp{
 			ID:              t.ID,
 			Name:            t.Name,
 			Completed:       done[fmt.Sprintf("%d", t.ID)],
 			LessonCached:    cacheHas(user, fmt.Sprintf("%s:lesson:%d", langID, t.ID)),
-			ChallengeCached: cacheHas(user, fmt.Sprintf("%s:challenge:%d", langID, t.ID)),
+			ChallengeCached: challenges,
 		}
 	}
 	jsonOK(w, result)
@@ -167,10 +234,11 @@ One crisp sentence: the essential takeaway.`,
 
 func handleChallenge(w http.ResponseWriter, r *http.Request, user string) {
 	var req struct {
-		Lang      string `json:"lang"`
-		TopicID   int    `json:"topic_id"`
-		TopicName string `json:"topic_name"`
-		Force     bool   `json:"force"` // true = bypass cache (Regenerate button)
+		Lang       string `json:"lang"`
+		TopicID    int    `json:"topic_id"`
+		TopicName  string `json:"topic_name"`
+		Difficulty string `json:"difficulty"` // beginner | intermediate | advanced | goat
+		Force      bool   `json:"force"`      // true = bypass cache (Regenerate button)
 	}
 	if !decodePOST(w, r, &req) {
 		return
@@ -180,8 +248,12 @@ func handleChallenge(w http.ResponseWriter, r *http.Request, user string) {
 		return
 	}
 
-	// Challenges are cached just like lessons so they survive a server restart.
-	key := fmt.Sprintf("%s:challenge:%d", req.Lang, req.TopicID)
+	diff := normalizeDifficulty(req.Difficulty)
+	spec := difficultySpec[diff]
+
+	// Challenges are cached just like lessons (one entry per difficulty tier)
+	// so they survive a server restart.
+	key := challengeCacheKey(req.Lang, req.TopicID, diff)
 	if !req.Force {
 		if cached, hit := cacheGet(user, key); hit {
 			streamCached(w, cached)
@@ -191,9 +263,12 @@ func handleChallenge(w http.ResponseWriter, r *http.Request, user string) {
 
 	prompt := fmt.Sprintf(`Create a practical %s coding challenge for Topic %d: **%s**.
 
+This is the **%s** tier of four (Beginner → Intermediate → Advanced → GOAT).
+Tier brief: %s
+
 ## Challenge: [Creative, specific title]
 
-**Difficulty**: Beginner / Intermediate
+**Difficulty**: %s
 
 **Task**
 2–3 sentence description of what to implement. Be concrete and specific.
@@ -212,8 +287,13 @@ Output: ...
 **Starter Code**
 %s
 
-Keep it focused purely on %s concepts. Make it engaging with a real-world flavor.`,
-		lang.Name, req.TopicID, req.TopicName, lang.StarterTemplate, req.TopicName)
+Use the starter code above as a base, trimming or extending it to match the
+tier brief. Keep it focused purely on %s concepts. Make it engaging with a
+real-world flavor.`,
+		lang.Name, req.TopicID, req.TopicName,
+		spec.Label, spec.Brief,
+		spec.Label,
+		lang.StarterTemplate, req.TopicName)
 
 	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil, func(full string) {
 		cacheStore(user, key, full)
@@ -309,10 +389,11 @@ Give ONE specific, encouraging nudge that moves them forward without revealing t
 
 func handleChat(w http.ResponseWriter, r *http.Request, user string) {
 	var req struct {
-		Lang      string    `json:"lang"`
-		TopicID   int       `json:"topic_id"`
-		TopicName string    `json:"topic_name"`
-		Messages  []Message `json:"messages"`
+		Lang       string    `json:"lang"`
+		TopicID    int       `json:"topic_id"`
+		TopicName  string    `json:"topic_name"`
+		Difficulty string    `json:"difficulty"` // tier the student is viewing
+		Messages   []Message `json:"messages"`
 	}
 	if !decodePOST(w, r, &req) {
 		return
@@ -325,7 +406,7 @@ func handleChat(w http.ResponseWriter, r *http.Request, user string) {
 	ctx := chatContextBlock(
 		user,
 		fmt.Sprintf("%s:lesson:%d", req.Lang, req.TopicID),
-		fmt.Sprintf("%s:challenge:%d", req.Lang, req.TopicID),
+		challengeCacheKey(req.Lang, req.TopicID, normalizeDifficulty(req.Difficulty)),
 	)
 	system := fmt.Sprintf(`%s
 The student is studying Topic %d: %s. Answer their questions clearly, concisely, and encouragingly. When relevant, ground your answer in the lesson and challenge below.%s`,

@@ -55,12 +55,13 @@ func handleTracks(w http.ResponseWriter, r *http.Request, user string) {
 	done := getUserLangProgress(user, langID)
 
 	type LessonResp struct {
-		ID              int    `json:"id"`
-		Title           string `json:"title"`
-		Summary         string `json:"summary"`
-		Completed       bool   `json:"completed"`
-		LessonCached    bool   `json:"lessonCached"`
-		ChallengeCached bool   `json:"challengeCached"`
+		ID           int    `json:"id"`
+		Title        string `json:"title"`
+		Summary      string `json:"summary"`
+		Completed    bool   `json:"completed"`
+		LessonCached bool   `json:"lessonCached"`
+		// One flag per difficulty tier, e.g. {"beginner": true, "goat": false}.
+		ChallengeCached map[string]bool `json:"challengeCached"`
 	}
 	type TrackResp struct {
 		ID          string       `json:"id"`
@@ -74,13 +75,17 @@ func handleTracks(w http.ResponseWriter, r *http.Request, user string) {
 	for _, t := range lang.Tracks {
 		lessons := make([]LessonResp, len(t.Lessons))
 		for i, l := range t.Lessons {
+			challenges := make(map[string]bool, len(difficultyOrder))
+			for _, d := range difficultyOrder {
+				challenges[d] = cacheHas(user, trackChallengeCacheKey(langID, t.ID, l.ID, d))
+			}
 			lessons[i] = LessonResp{
 				ID:              l.ID,
 				Title:           l.Title,
 				Summary:         l.Summary,
 				Completed:       done[fmt.Sprintf("track:%s:%d", t.ID, l.ID)],
 				LessonCached:    cacheHas(user, fmt.Sprintf("%s:track:%s:%d", langID, t.ID, l.ID)),
-				ChallengeCached: cacheHas(user, fmt.Sprintf("%s:track:%s:challenge:%d", langID, t.ID, l.ID)),
+				ChallengeCached: challenges,
 			}
 		}
 		result = append(result, TrackResp{
@@ -173,10 +178,11 @@ One sentence: what the student can now do that they couldn't before this lesson.
 
 func handleTrackChallenge(w http.ResponseWriter, r *http.Request, user string) {
 	var req struct {
-		Lang     string `json:"lang"`
-		TrackID  string `json:"track_id"`
-		LessonID int    `json:"lesson_id"`
-		Force    bool   `json:"force"` // true = bypass cache (Regenerate button)
+		Lang       string `json:"lang"`
+		TrackID    string `json:"track_id"`
+		LessonID   int    `json:"lesson_id"`
+		Difficulty string `json:"difficulty"` // beginner | intermediate | advanced | goat
+		Force      bool   `json:"force"`      // true = bypass cache (Regenerate button)
 	}
 	if !decodePOST(w, r, &req) {
 		return
@@ -190,8 +196,12 @@ func handleTrackChallenge(w http.ResponseWriter, r *http.Request, user string) {
 		return
 	}
 
-	// Challenges are cached just like lessons so they survive a server restart.
-	cacheKey := fmt.Sprintf("%s:track:%s:challenge:%d", req.Lang, req.TrackID, req.LessonID)
+	diff := normalizeDifficulty(req.Difficulty)
+	spec := difficultySpec[diff]
+
+	// Challenges are cached just like lessons (one entry per difficulty tier)
+	// so they survive a server restart.
+	cacheKey := trackChallengeCacheKey(req.Lang, req.TrackID, req.LessonID, diff)
 	if !req.Force {
 		if cached, hit := cacheGet(user, cacheKey); hit {
 			streamCached(w, cached)
@@ -205,14 +215,16 @@ func handleTrackChallenge(w http.ResponseWriter, r *http.Request, user string) {
 
 %s
 
+This is the **%s** tier of four (Beginner → Intermediate → Advanced → GOAT).
+Tier brief: %s
+
 The challenge must:
 - Focus specifically on **%s** concepts
 - Build naturally on the previous lessons (reference and extend their patterns)
-- Be completable in ~15–20 minutes
 
 ## Challenge: [Creative title]
 
-**Difficulty**: Beginner / Intermediate
+**Difficulty**: %s
 
 **Task**
 2–3 sentences describing what to build. Be concrete and specific.
@@ -229,10 +241,15 @@ Output: ...
 `+"```"+`
 
 **Starter Code**
-%s`,
+%s
+
+Use the starter code above as a base, trimming or extending it to match the
+tier brief.`,
 		lesson.ID, lesson.Title, track.Title, lang.Name,
 		prevCtx,
+		spec.Label, spec.Brief,
 		lesson.Title,
+		spec.Label,
 		lang.StarterTemplate,
 	)
 
@@ -341,10 +358,11 @@ Give ONE specific, encouraging nudge. Maximum 3 sentences. Don't reveal the answ
 
 func handleTrackChat(w http.ResponseWriter, r *http.Request, user string) {
 	var req struct {
-		Lang     string    `json:"lang"`
-		TrackID  string    `json:"track_id"`
-		LessonID int       `json:"lesson_id"`
-		Messages []Message `json:"messages"`
+		Lang       string    `json:"lang"`
+		TrackID    string    `json:"track_id"`
+		LessonID   int       `json:"lesson_id"`
+		Difficulty string    `json:"difficulty"` // tier the student is viewing
+		Messages   []Message `json:"messages"`
 	}
 	if !decodePOST(w, r, &req) {
 		return
@@ -361,7 +379,7 @@ func handleTrackChat(w http.ResponseWriter, r *http.Request, user string) {
 	ctx := chatContextBlock(
 		user,
 		fmt.Sprintf("%s:track:%s:%d", req.Lang, req.TrackID, req.LessonID),
-		fmt.Sprintf("%s:track:%s:challenge:%d", req.Lang, req.TrackID, req.LessonID),
+		trackChallengeCacheKey(req.Lang, req.TrackID, req.LessonID, normalizeDifficulty(req.Difficulty)),
 	)
 	system := fmt.Sprintf(`%s
 The student is working through the **%s** track, Lesson %d: %s.

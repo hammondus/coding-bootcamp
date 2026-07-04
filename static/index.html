@@ -158,6 +158,15 @@
           <!-- Left: challenge description -->
           <div class="challenge-desc">
 
+            <!-- Difficulty tiers — each generates and caches its own challenge.
+                 Hidden in project mode (milestones have no tiers). -->
+            <div class="diff-bar" id="diff-bar">
+              <button class="diff-pill active" data-diff="beginner"     onclick="setDifficulty('beginner')">🌱 Beginner</button>
+              <button class="diff-pill"        data-diff="intermediate" onclick="setDifficulty('intermediate')">🔧 Intermediate</button>
+              <button class="diff-pill"        data-diff="advanced"     onclick="setDifficulty('advanced')">🔥 Advanced</button>
+              <button class="diff-pill diff-goat" data-diff="goat"      onclick="setDifficulty('goat')">🐐 GOAT</button>
+            </div>
+
             <div class="empty" id="challenge-empty">
               <div class="empty-icon">💻</div>
               <div class="empty-title">Ready to code?</div>

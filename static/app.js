@@ -12,8 +12,11 @@ const S = {
   activeId:     1,
   activeTab:    'lesson',
   authTab:      'login',
+  difficulty:   'beginner', // active challenge tier: beginner|intermediate|advanced|goat
 
-  // Caches keyed by "lang:topicId" or "lang:track:trackId:lessonId"
+  // Caches keyed by "lang:topicId" or "lang:track:trackId:lessonId";
+  // challenges/challengeRaw additionally get a ":difficulty" suffix
+  // (see activeChallengeKey).
   lessons:      {},
   challenges:   {},
   challengeRaw: {},
@@ -71,6 +74,15 @@ function activeCacheKey() {
     return projectCacheKey(S.activeProjectId, S.activeProjectMilestone.id);
   }
   return cacheKey(S.activeId);
+}
+
+// Key for the challenge caches: challenges are generated per difficulty tier,
+// so the selection key gets a tier suffix. Projects are the exception — the
+// milestone guidance doubles as the challenge and has no tiers, so the plain
+// selection key is used (matching what loadProjectGuidance stores under).
+function activeChallengeKey() {
+  if (S.mode === 'project') return activeCacheKey();
+  return `${activeCacheKey()}:${S.difficulty}`;
 }
 
 // True when the active project selection is the brief/overview (milestone 0).
@@ -423,6 +435,10 @@ function renderTopics() {
 
 // ── Header ─────────────────────────────────────
 function renderHeader() {
+  // The difficulty bar lives in the challenge panel but depends on the mode,
+  // and renderHeader runs on every selection change — update it here.
+  renderDifficultyBar();
+
   // The brief hides the complete button; make sure it's visible again for
   // every other selection (the button is shared across all three modes).
   $('complete-btn').style.visibility = '';
@@ -509,9 +525,10 @@ function selectTopic(id, reset = true) {
       else                          resetLessonPanel();
     };
     const restoreChallenge = () => {
-      if (S.challenges[key])           showChallengeContent(S.challenges[key]);
-      else if (topic?.challengeCached) loadChallenge();
-      else                             resetChallengePanel();
+      const ckey = activeChallengeKey();
+      if (S.challenges[ckey])           showChallengeContent(S.challenges[ckey]);
+      else if (activeChallengeCached()) loadChallenge();
+      else                              resetChallengePanel();
     };
     if (S.activeTab === 'challenge') { restoreChallenge(); restoreLesson(); }
     else                             { restoreLesson(); restoreChallenge(); }
@@ -543,7 +560,7 @@ function switchTab(tab) {
         && !S.lessons[activeCacheKey()] && activeLessonCached()) {
       loadLesson();
     } else if (tab === 'challenge'
-        && !S.challenges[activeCacheKey()] && activeChallengeCached()) {
+        && !S.challenges[activeChallengeKey()] && activeChallengeCached()) {
       loadChallenge();
     }
   }
@@ -566,14 +583,16 @@ function activeLessonCached() {
     : !!activeTopic()?.lessonCached;
 }
 
-// True when the current selection has a challenge cached server-side. Projects
-// have no separate challenge document — the milestone guidance doubles as the
-// build spec — so this is always false in project mode.
+// True when the current selection has a challenge cached server-side at the
+// active difficulty tier (challengeCached is a per-tier map). Projects have no
+// separate challenge document — the milestone guidance doubles as the build
+// spec — so this is always false in project mode.
 function activeChallengeCached() {
   if (S.mode === 'project') return false;
-  return S.mode === 'track'
-    ? !!S.activeTrackLesson?.challengeCached
-    : !!activeTopic()?.challengeCached;
+  const cached = S.mode === 'track'
+    ? S.activeTrackLesson?.challengeCached
+    : activeTopic()?.challengeCached;
+  return !!cached?.[S.difficulty];
 }
 
 // ── Lesson panel ───────────────────────────────
@@ -648,7 +667,7 @@ function loadChallenge(force = false) {
     loadProjectGuidance(force);
     return;
   }
-  const key = activeCacheKey();
+  const key = activeChallengeKey();
   $('challenge-empty').classList.add('hidden');
   $('challenge-inner').classList.remove('hidden');
   closeEval();
@@ -658,7 +677,7 @@ function loadChallenge(force = false) {
 
   streamFetch(
     endpoint('challenge'),
-    reqBody({ force }),
+    reqBody({ force, difficulty: S.difficulty }),
     (_, acc) => { out.innerHTML = parseMarkdown(acc); },
     (full) => {
       out.classList.remove('streaming');
@@ -674,6 +693,30 @@ function loadChallenge(force = false) {
       }
     }
   );
+}
+
+// ── Challenge difficulty tiers ─────────────────
+// Four tiers per lesson (Beginner → Intermediate → Advanced → GOAT), each
+// generated and cached separately on the server. Switching tiers swaps the
+// challenge panel to that tier's content without touching the others.
+
+function renderDifficultyBar() {
+  // Projects have no separate challenge document, so tiers don't apply there.
+  $('diff-bar').classList.toggle('hidden', S.mode === 'project');
+  document.querySelectorAll('.diff-pill').forEach(b => {
+    b.classList.toggle('active', b.dataset.diff === S.difficulty);
+  });
+}
+
+function setDifficulty(diff) {
+  if (S.streaming || diff === S.difficulty) return;
+  S.difficulty = diff;
+  renderDifficultyBar();
+  // Restore this tier's challenge: JS cache → server cache → empty state.
+  const key = activeChallengeKey();
+  if (S.challenges[key])            showChallengeContent(S.challenges[key]);
+  else if (activeChallengeCached()) loadChallenge();
+  else                              resetChallengePanel();
 }
 
 // ── Project content ────────────────────────────
@@ -758,7 +801,7 @@ function loadProjectGuidance(force = false) {
 function submitCode() {
   if (S.streaming || !hasSelection()) return;
   const code = $('code-editor').value.trim();
-  const key  = activeCacheKey();
+  const key  = activeChallengeKey();
   if (!code)                { showToast('Write some code first!', 'error'); return; }
   if (!S.challengeRaw[key]) { showToast('Load a challenge first!', 'error'); return; }
 
@@ -789,7 +832,7 @@ function submitCode() {
 
 function getHint() {
   if (S.streaming || !hasSelection()) return;
-  const key = activeCacheKey();
+  const key = activeChallengeKey();
   if (!S.challengeRaw[key]) { showToast('Load a challenge first!', 'error'); return; }
 
   const panel = $('eval-panel');
@@ -866,7 +909,9 @@ async function sendChat() {
 
   streamFetch(
     endpoint('chat'),
-    reqBody({ messages: history }),
+    // difficulty lets the server include the challenge tier the student is
+    // actually looking at in the chat context (ignored by project chat).
+    reqBody({ messages: history, difficulty: S.difficulty }),
     (_, acc) => { assistantBubble.innerHTML = parseMarkdown(acc); box.scrollTop = box.scrollHeight; },
     (full) => {
       assistantBubble.classList.remove('streaming');

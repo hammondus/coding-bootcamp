@@ -15,10 +15,14 @@ const cacheFile = "data/cache.json" // persists generated lesson & challenge con
 // "regenerate" variations a student produces) is never shared between accounts.
 // It is a two-level map: username → content-key → markdown, where the
 // content-key names the kind, e.g.
-//   "go:lesson:1"               — fundamentals lesson
-//   "go:challenge:1"            — fundamentals challenge
-//   "go:track:http:2"           — advanced track lesson
-//   "go:track:http:challenge:2" — advanced track challenge
+//   "go:lesson:1"                    — fundamentals lesson
+//   "go:challenge:1"                 — fundamentals challenge (Beginner tier)
+//   "go:challenge:1:goat"            — fundamentals challenge, harder tier
+//   "go:track:http:2"                — advanced track lesson
+//   "go:track:http:challenge:2"      — advanced track challenge (Beginner tier)
+//   "go:track:http:challenge:2:goat" — advanced track challenge, harder tier
+// (Beginner has no tier suffix so challenges cached before difficulty tiers
+// existed still appear as the Beginner tier — see challengeCacheKey.)
 var (
 	lessonCache   = map[string]map[string]string{}
 	lessonCacheMu sync.RWMutex
