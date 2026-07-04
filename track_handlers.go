@@ -62,6 +62,8 @@ func handleTracks(w http.ResponseWriter, r *http.Request, user string) {
 		LessonCached bool   `json:"lessonCached"`
 		// One flag per difficulty tier, e.g. {"beginner": true, "goat": false}.
 		ChallengeCached map[string]bool `json:"challengeCached"`
+		// One flag per tier: the student marked that tier's challenge complete.
+		ChallengeDone map[string]bool `json:"challengeDone"`
 	}
 	type TrackResp struct {
 		ID          string       `json:"id"`
@@ -76,8 +78,10 @@ func handleTracks(w http.ResponseWriter, r *http.Request, user string) {
 		lessons := make([]LessonResp, len(t.Lessons))
 		for i, l := range t.Lessons {
 			challenges := make(map[string]bool, len(difficultyOrder))
+			challengesDone := make(map[string]bool, len(difficultyOrder))
 			for _, d := range difficultyOrder {
 				challenges[d] = cacheHas(user, trackChallengeCacheKey(langID, t.ID, l.ID, d))
+				challengesDone[d] = done[fmt.Sprintf("track:%s:%d:challenge:%s", t.ID, l.ID, d)]
 			}
 			lessons[i] = LessonResp{
 				ID:              l.ID,
@@ -86,6 +90,7 @@ func handleTracks(w http.ResponseWriter, r *http.Request, user string) {
 				Completed:       done[fmt.Sprintf("track:%s:%d", t.ID, l.ID)],
 				LessonCached:    cacheHas(user, fmt.Sprintf("%s:track:%s:%d", langID, t.ID, l.ID)),
 				ChallengeCached: challenges,
+				ChallengeDone:   challengesDone,
 			}
 		}
 		result = append(result, TrackResp{
@@ -240,6 +245,12 @@ Input:  ...
 Output: ...
 `+"```"+`
 
+**Stretch Goals**
+2 optional extensions for students who finish early, as a short bulleted list.
+Each must deepen this same lesson's topic — no new topics, and no code blocks
+(prose only; the editor pre-fills from the last code block, which must stay
+the starter code). State clearly that these are optional and not needed to pass.
+
 **Starter Code**
 %s
 
@@ -316,6 +327,10 @@ the requirements explicitly ask for it — even if it goes against a general con
 or something the lesson teaches — do not flag it as an issue or style problem. A brief
 "in real-world code you'd usually..." aside is fine, but the verdict and Issues section
 must judge the code against the requirements as written.
+
+Stretch goals are optional extras: never fail or penalize a submission for skipping
+them. If the student attempted one, evaluate the attempt and celebrate it in
+**What Works Well**.
 
 Be encouraging. Note: code cannot be executed — evaluate on logic and conventions.`,
 		lang.Name, track.Title, lesson.ID, lesson.Title,

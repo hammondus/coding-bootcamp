@@ -744,12 +744,63 @@ function loadChallenge(force = false) {
 // generated and cached separately on the server. Switching tiers swaps the
 // challenge panel to that tier's content without touching the others.
 
+// Per-tier completion map for the active selection, e.g. {beginner: true}.
+// Comes from /api/topics (fundamentals) or /api/tracks (tracks); projects have
+// no challenge tiers, so this is always empty there.
+function activeChallengeDone() {
+  if (S.mode === 'project') return {};
+  return (S.mode === 'track'
+    ? S.activeTrackLesson?.challengeDone
+    : activeTopic()?.challengeDone) || {};
+}
+
 function renderDifficultyBar() {
   // Projects have no separate challenge document, so tiers don't apply there.
   $('diff-bar').classList.toggle('hidden', S.mode === 'project');
+  const done = activeChallengeDone();
   document.querySelectorAll('.diff-pill').forEach(b => {
     b.classList.toggle('active', b.dataset.diff === S.difficulty);
+    b.classList.toggle('done', !!done[b.dataset.diff]);
   });
+  renderChallengeCompleteBtn();
+}
+
+// The per-tier complete toggle in the challenge bar. Hidden for projects —
+// milestones are completed with the header's Mark complete button instead.
+function renderChallengeCompleteBtn() {
+  const btn = $('challenge-complete-btn');
+  if (S.mode === 'project') { btn.classList.add('hidden'); return; }
+  btn.classList.remove('hidden');
+  const isDone = !!activeChallengeDone()[S.difficulty];
+  $('challenge-complete-icon').textContent  = isDone ? '✅' : '○';
+  $('challenge-complete-label').textContent = isDone ? 'Challenge completed' : 'Mark challenge complete';
+  btn.classList.toggle('done', isDone);
+}
+
+// Mark just the active difficulty tier's challenge complete (or undo it).
+// Independent of the header's Mark complete: passing GOAT doesn't finish the
+// topic, and finishing the topic doesn't tick any tier.
+async function toggleChallengeComplete() {
+  if (S.mode === 'project' || !hasSelection()) return;
+  const next = !activeChallengeDone()[S.difficulty];
+  try {
+    await fetch('/api/progress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(reqBody({ difficulty: S.difficulty, completed: next })),
+    });
+    // Update the object the done-map came from (a topic in S.topics, or the
+    // active track lesson, which is the same object held in S.tracks).
+    const target = S.mode === 'track' ? S.activeTrackLesson : activeTopic();
+    if (target) {
+      target.challengeDone = target.challengeDone || {};
+      target.challengeDone[S.difficulty] = next;
+    }
+    renderDifficultyBar();
+    showToast(next ? '✅ Challenge marked complete!' : 'Challenge marked incomplete', next ? 'success' : 'info');
+  } catch (_) {
+    showToast('Could not save progress', 'error');
+  }
 }
 
 function setDifficulty(diff) {

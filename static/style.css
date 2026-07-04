@@ -546,6 +546,20 @@ textarea, input { font-family: var(--font-mono); }
   background: rgba(255, 215, 0, 0.12);
 }
 
+/* A tier the student marked complete gets a green tick on its pill. */
+.diff-pill.done::after {
+  content: ' ✓';
+  color: var(--green);
+  font-weight: 700;
+}
+
+/* Per-tier complete toggle in the challenge bar — a compact version of the
+   header's complete button (shares .complete-btn for the hover/done states). */
+.challenge-complete-btn {
+  padding: 3px 10px;
+  font-size: 11px;
+}
+
 /* Hidden hints: the challenge's "## Hints" section stays collapsed behind
    this button until the student chooses to peek (which counts as hint use). */
 .hints-reveal-btn { margin: 14px 0 4px; }

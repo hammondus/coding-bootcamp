@@ -177,6 +177,12 @@
             <div class="challenge-inner hidden" id="challenge-inner">
               <div class="challenge-bar">
                 <button class="btn-ghost" onclick="loadChallenge(true)">↺ Regenerate</button>
+                <!-- Marks just this difficulty tier complete — separate from the
+                     header's Mark complete, which finishes the whole subject. -->
+                <button id="challenge-complete-btn" class="complete-btn challenge-complete-btn" onclick="toggleChallengeComplete()">
+                  <span id="challenge-complete-icon">○</span>
+                  <span id="challenge-complete-label">Mark challenge complete</span>
+                </button>
               </div>
               <div class="md-output" id="challenge-output"></div>
             </div>

@@ -15,6 +15,12 @@ const progressFile = "data/progress.json"
 // Keys are strings because JSON object keys are always strings. For
 // fundamentals the key is the topic ID ("3"); for tracks it's
 // "track:<trackID>:<lessonID>".
+//
+// A challenge completed at one difficulty tier gets its own key with a
+// ":challenge:<tier>" suffix ("3:challenge:goat",
+// "track:<trackID>:<lessonID>:challenge:goat"). Tier keys are separate from
+// the plain topic/lesson key, so finishing a challenge and finishing the
+// whole subject are tracked independently.
 var (
 	progress   = map[string]map[string]map[string]bool{}
 	progressMu sync.RWMutex
@@ -76,6 +82,7 @@ func handleProgress(w http.ResponseWriter, r *http.Request, user string) {
 		LessonID    int    `json:"lesson_id"`    // track lesson number
 		ProjectID   string `json:"project_id"`   // project: non-empty → key = "project:<id>:<milestone>"
 		MilestoneID int    `json:"milestone_id"` // project milestone number
+		Difficulty  string `json:"difficulty"`   // non-empty → mark one challenge tier, not the whole subject
 		Completed   bool   `json:"completed"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -117,6 +124,21 @@ func handleProgress(w http.ResponseWriter, r *http.Request, user string) {
 			return
 		}
 		key = fmt.Sprintf("%d", req.TopicID)
+	}
+
+	// A non-empty difficulty marks a single challenge tier complete rather
+	// than the whole topic/lesson. Validate it like the IDs above, so a buggy
+	// client can't invent tiers in progress.json.
+	if req.Difficulty != "" {
+		if req.ProjectID != "" {
+			jsonErr(w, 400, "projects have no challenge tiers")
+			return
+		}
+		if _, ok := difficultySpec[req.Difficulty]; !ok {
+			jsonErr(w, 400, "unknown difficulty")
+			return
+		}
+		key += ":challenge:" + req.Difficulty
 	}
 
 	progressMu.Lock()
