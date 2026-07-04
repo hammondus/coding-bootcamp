@@ -25,6 +25,7 @@ func main() {
 	loadSessions()
 	loadProgress()
 	loadLessonCache()
+	loadHintsUsed()
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -54,6 +55,7 @@ func main() {
 	http.HandleFunc("/api/challenge", requireAuth(handleChallenge))
 	http.HandleFunc("/api/evaluate", requireAuth(handleEvaluate))
 	http.HandleFunc("/api/hint", requireAuth(handleHint))
+	http.HandleFunc("/api/hints-viewed", requireAuth(handleHintsViewed))
 	http.HandleFunc("/api/chat", requireAuth(handleChat))
 
 	// Advanced tracks
@@ -62,6 +64,7 @@ func main() {
 	http.HandleFunc("/api/track/challenge", requireAuth(handleTrackChallenge))
 	http.HandleFunc("/api/track/evaluate", requireAuth(handleTrackEvaluate))
 	http.HandleFunc("/api/track/hint", requireAuth(handleTrackHint))
+	http.HandleFunc("/api/track/hints-viewed", requireAuth(handleTrackHintsViewed))
 	http.HandleFunc("/api/track/chat", requireAuth(handleTrackChat))
 
 	// Capstone projects

@@ -122,8 +122,11 @@ function hasSelection() {
 }
 
 // Pull the last fenced code block out of a challenge to seed the editor.
+// Everything from the "## Hints" section on is ignored: a near-spoiler hint
+// can contain its own code block, and starter code always comes before hints.
 function extractStarterCode(markdown) {
-  const blocks = markdown.match(/```[\w]*\s*([\s\S]*?)```/g);
+  const beforeHints = markdown.split(/\n##\s+Hints\b/i)[0];
+  const blocks = beforeHints.match(/```[\w]*\s*([\s\S]*?)```/g);
   if (!blocks) return '';
   const last = blocks[blocks.length - 1];
   return last.replace(/```[\w]*\s*/, '').replace(/```$/, '').trim();
@@ -655,7 +658,47 @@ function showChallengeContent(html) {
   const out = $('challenge-output');
   out.classList.remove('streaming');
   out.innerHTML = html;
+  if (S.mode !== 'project') collapseHints(out);
   applyHighlight(out);
+}
+
+// ── Hidden hints ───────────────────────────────
+// Generated challenges end with a "## Hints" section. It stays hidden behind
+// a reveal button as part of the challenge: peeking is fine, but it counts as
+// hint use, and the evaluation praises a pass earned without any hints.
+
+// Wrap the Hints heading and everything after it in a hidden container with a
+// reveal button in front. Runs on every streaming chunk too, so hints never
+// flash on screen mid-stream. The button uses an inline onclick because the
+// challenge panel is cached and restored via innerHTML, which would drop a
+// listener attached with addEventListener.
+function collapseHints(out) {
+  if (out.querySelector('.hints-wrap')) return; // already collapsed
+  const h = [...out.querySelectorAll('h2')]
+    .find(x => /^hints\b/i.test(x.textContent.trim()));
+  if (!h) return;
+  const btn = el('button', 'btn-secondary hints-reveal-btn', '💡 Reveal hints');
+  btn.setAttribute('onclick', 'revealHints(this)');
+  btn.title = 'Counts as using a hint';
+  const wrap = el('div', 'hints-wrap hints-hidden');
+  h.parentNode.insertBefore(btn, h);
+  while (btn.nextSibling) wrap.appendChild(btn.nextSibling);
+  btn.after(wrap);
+}
+
+function revealHints(btn) {
+  const wrap = btn.nextElementSibling;
+  if (wrap) wrap.classList.remove('hints-hidden');
+  btn.remove();
+  // Keep the revealed state when this tier is restored later in the session.
+  S.challenges[activeChallengeKey()] = $('challenge-output').innerHTML;
+  // Tell the server — revealing counts as using a hint, and the flag must
+  // survive a page reload so the evaluation stays honest.
+  fetch(endpoint('hints-viewed'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(reqBody({ difficulty: S.difficulty })),
+  }).catch(() => {});
 }
 
 function loadChallenge(force = false) {
@@ -678,11 +721,12 @@ function loadChallenge(force = false) {
   streamFetch(
     endpoint('challenge'),
     reqBody({ force, difficulty: S.difficulty }),
-    (_, acc) => { out.innerHTML = parseMarkdown(acc); },
+    (_, acc) => { out.innerHTML = parseMarkdown(acc); collapseHints(out); },
     (full) => {
       out.classList.remove('streaming');
       S.challengeRaw[key] = full;
       out.innerHTML = parseMarkdown(full);
+      collapseHints(out);
       applyHighlight(out);
       S.challenges[key] = out.innerHTML;
       // Pre-fill editor with starter code if empty
@@ -813,7 +857,9 @@ function submitCode() {
 
   streamFetch(
     endpoint('evaluate'),
-    reqBody({ code, challenge: S.challengeRaw[key] }),
+    // difficulty lets the server check hint use for this exact tier and
+    // recognise a no-hints solve in the feedback.
+    reqBody({ code, challenge: S.challengeRaw[key], difficulty: S.difficulty }),
     (_, acc) => { out.innerHTML = parseMarkdown(acc); },
     (full) => {
       out.classList.remove('streaming');
@@ -843,7 +889,8 @@ function getHint() {
 
   streamFetch(
     endpoint('hint'),
-    reqBody({ challenge: S.challengeRaw[key], code: $('code-editor').value }),
+    // difficulty lets the server record hint use against this exact tier.
+    reqBody({ challenge: S.challengeRaw[key], code: $('code-editor').value, difficulty: S.difficulty }),
     (_, acc) => { out.innerHTML = '<p><strong>💡 Hint</strong></p>' + parseMarkdown(acc); },
     (full) => {
       out.classList.remove('streaming');

@@ -37,6 +37,21 @@ func lessonContextBlock(user, lessonKey string) string {
 	return ""
 }
 
+// hintUsageBlock returns evaluation-prompt context about whether the student
+// used any hints on this challenge (💡 Hint button or revealing the hidden
+// Hints section). A no-hints pass earns explicit praise; hint use is never
+// mentioned, so there's no shame in asking.
+func hintUsageBlock(user, challengeKey string) string {
+	if hintsWereUsed(user, challengeKey) {
+		return "\n\nContext: the student used one or more hints on this challenge. " +
+			"That's a healthy way to learn — do not mention or penalize hint use in your feedback."
+	}
+	return "\n\nContext: the student has NOT used any hints on this challenge. " +
+		"If the verdict is Pass, celebrate that explicitly in **What Works Well** — " +
+		"e.g. \"🏆 Solved without a single hint — seriously impressive!\". " +
+		"If the verdict is Needs Work, do not mention hints at all."
+}
+
 // ── Challenge difficulty tiers ────────────────────────
 //
 // Every lesson offers its challenge at four difficulty tiers. Each tier is
@@ -287,6 +302,12 @@ Output: ...
 **Starter Code**
 %s
 
+## Hints
+Exactly 3 progressive hints as a numbered list: a gentle nudge, a stronger
+pointer, then a near-spoiler. This must be the LAST section — the UI keeps it
+hidden until the student chooses to reveal it — so never reference the hints
+from any other section.
+
 Use the starter code above as a base, trimming or extending it to match the
 tier brief. Keep it focused purely on %s concepts. Make it engaging with a
 real-world flavor.`,
@@ -297,16 +318,20 @@ real-world flavor.`,
 
 	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil, func(full string) {
 		cacheStore(user, key, full)
+		// A fresh challenge starts with a clean hint record — hint use on the
+		// old challenge shouldn't count against the new one.
+		clearHintsUsed(user, key)
 	})
 }
 
 func handleEvaluate(w http.ResponseWriter, r *http.Request, user string) {
 	var req struct {
-		Lang      string `json:"lang"`
-		TopicID   int    `json:"topic_id"`
-		TopicName string `json:"topic_name"`
-		Code      string `json:"code"`
-		Challenge string `json:"challenge"`
+		Lang       string `json:"lang"`
+		TopicID    int    `json:"topic_id"`
+		TopicName  string `json:"topic_name"`
+		Difficulty string `json:"difficulty"` // tier being attempted
+		Code       string `json:"code"`
+		Challenge  string `json:"challenge"`
 	}
 	if !decodePOST(w, r, &req) {
 		return
@@ -352,17 +377,19 @@ Be encouraging and educational. Note: code cannot be executed — evaluate on lo
 		lang.Name,
 		lang.Name, lang.StyleNote)
 	prompt += lessonContextBlock(user, fmt.Sprintf("%s:lesson:%d", req.Lang, req.TopicID))
+	prompt += hintUsageBlock(user, challengeCacheKey(req.Lang, req.TopicID, normalizeDifficulty(req.Difficulty)))
 
 	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil)
 }
 
 func handleHint(w http.ResponseWriter, r *http.Request, user string) {
 	var req struct {
-		Lang      string `json:"lang"`
-		TopicID   int    `json:"topic_id"`
-		TopicName string `json:"topic_name"`
-		Challenge string `json:"challenge"`
-		Code      string `json:"code"`
+		Lang       string `json:"lang"`
+		TopicID    int    `json:"topic_id"`
+		TopicName  string `json:"topic_name"`
+		Difficulty string `json:"difficulty"` // tier being attempted
+		Challenge  string `json:"challenge"`
+		Code       string `json:"code"`
 	}
 	if !decodePOST(w, r, &req) {
 		return
@@ -384,7 +411,31 @@ Give ONE specific, encouraging nudge that moves them forward without revealing t
 		lang.Name, req.TopicName, req.Challenge, lang.ID, req.Code)
 	prompt += lessonContextBlock(user, fmt.Sprintf("%s:lesson:%d", req.Lang, req.TopicID))
 
-	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil)
+	// Record hint use only when the hint was actually delivered (onComplete
+	// fires on a clean finish) — a failed request shouldn't count against the
+	// student's no-hints run. The evaluation reads this flag.
+	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil, func(string) {
+		markHintsUsed(user, challengeCacheKey(req.Lang, req.TopicID, normalizeDifficulty(req.Difficulty)))
+	})
+}
+
+// handleHintsViewed records that the student revealed the hidden Hints
+// section of a fundamentals challenge. Revealing counts the same as pressing
+// the 💡 Hint button, so the evaluation can recognise a no-hints solve.
+func handleHintsViewed(w http.ResponseWriter, r *http.Request, user string) {
+	var req struct {
+		Lang       string `json:"lang"`
+		TopicID    int    `json:"topic_id"`
+		Difficulty string `json:"difficulty"`
+	}
+	if !decodePOST(w, r, &req) {
+		return
+	}
+	if _, ok := lookupLang(w, req.Lang); !ok {
+		return
+	}
+	markHintsUsed(user, challengeCacheKey(req.Lang, req.TopicID, normalizeDifficulty(req.Difficulty)))
+	jsonOK(w, map[string]bool{"success": true})
 }
 
 func handleChat(w http.ResponseWriter, r *http.Request, user string) {

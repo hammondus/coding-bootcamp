@@ -546,6 +546,11 @@ textarea, input { font-family: var(--font-mono); }
   background: rgba(255, 215, 0, 0.12);
 }
 
+/* Hidden hints: the challenge's "## Hints" section stays collapsed behind
+   this button until the student chooses to peek (which counts as hint use). */
+.hints-reveal-btn { margin: 14px 0 4px; }
+.hints-wrap.hints-hidden { display: none; }
+
 .challenge-inner {
   flex: 1;
   overflow: hidden;

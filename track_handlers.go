@@ -243,6 +243,12 @@ Output: ...
 **Starter Code**
 %s
 
+## Hints
+Exactly 3 progressive hints as a numbered list: a gentle nudge, a stronger
+pointer, then a near-spoiler. This must be the LAST section — the UI keeps it
+hidden until the student chooses to reveal it — so never reference the hints
+from any other section.
+
 Use the starter code above as a base, trimming or extending it to match the
 tier brief.`,
 		lesson.ID, lesson.Title, track.Title, lang.Name,
@@ -255,16 +261,20 @@ tier brief.`,
 
 	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil, func(full string) {
 		cacheStore(user, cacheKey, full)
+		// A fresh challenge starts with a clean hint record — hint use on the
+		// old challenge shouldn't count against the new one.
+		clearHintsUsed(user, cacheKey)
 	})
 }
 
 func handleTrackEvaluate(w http.ResponseWriter, r *http.Request, user string) {
 	var req struct {
-		Lang      string `json:"lang"`
-		TrackID   string `json:"track_id"`
-		LessonID  int    `json:"lesson_id"`
-		Code      string `json:"code"`
-		Challenge string `json:"challenge"`
+		Lang       string `json:"lang"`
+		TrackID    string `json:"track_id"`
+		LessonID   int    `json:"lesson_id"`
+		Difficulty string `json:"difficulty"` // tier being attempted
+		Code       string `json:"code"`
+		Challenge  string `json:"challenge"`
 	}
 	if !decodePOST(w, r, &req) {
 		return
@@ -315,17 +325,19 @@ Be encouraging. Note: code cannot be executed — evaluate on logic and conventi
 		lang.Name, lang.StyleNote,
 	)
 	prompt += lessonContextBlock(user, fmt.Sprintf("%s:track:%s:%d", req.Lang, req.TrackID, req.LessonID))
+	prompt += hintUsageBlock(user, trackChallengeCacheKey(req.Lang, req.TrackID, req.LessonID, normalizeDifficulty(req.Difficulty)))
 
 	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil)
 }
 
 func handleTrackHint(w http.ResponseWriter, r *http.Request, user string) {
 	var req struct {
-		Lang      string `json:"lang"`
-		TrackID   string `json:"track_id"`
-		LessonID  int    `json:"lesson_id"`
-		Challenge string `json:"challenge"`
-		Code      string `json:"code"`
+		Lang       string `json:"lang"`
+		TrackID    string `json:"track_id"`
+		LessonID   int    `json:"lesson_id"`
+		Difficulty string `json:"difficulty"` // tier being attempted
+		Challenge  string `json:"challenge"`
+		Code       string `json:"code"`
 	}
 	if !decodePOST(w, r, &req) {
 		return
@@ -353,7 +365,35 @@ Give ONE specific, encouraging nudge. Maximum 3 sentences. Don't reveal the answ
 	)
 	prompt += lessonContextBlock(user, fmt.Sprintf("%s:track:%s:%d", req.Lang, req.TrackID, req.LessonID))
 
-	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil)
+	// Record hint use only when the hint was actually delivered (onComplete
+	// fires on a clean finish) — a failed request shouldn't count against the
+	// student's no-hints run. The evaluation reads this flag.
+	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil, func(string) {
+		markHintsUsed(user, trackChallengeCacheKey(req.Lang, req.TrackID, req.LessonID, normalizeDifficulty(req.Difficulty)))
+	})
+}
+
+// handleTrackHintsViewed is the track equivalent of handleHintsViewed:
+// revealing a track challenge's hidden Hints section counts as hint use.
+func handleTrackHintsViewed(w http.ResponseWriter, r *http.Request, user string) {
+	var req struct {
+		Lang       string `json:"lang"`
+		TrackID    string `json:"track_id"`
+		LessonID   int    `json:"lesson_id"`
+		Difficulty string `json:"difficulty"`
+	}
+	if !decodePOST(w, r, &req) {
+		return
+	}
+	lang, ok := lookupLang(w, req.Lang)
+	if !ok {
+		return
+	}
+	if _, _, ok := lookupTrackLesson(w, lang, req.TrackID, req.LessonID); !ok {
+		return
+	}
+	markHintsUsed(user, trackChallengeCacheKey(req.Lang, req.TrackID, req.LessonID, normalizeDifficulty(req.Difficulty)))
+	jsonOK(w, map[string]bool{"success": true})
 }
 
 func handleTrackChat(w http.ResponseWriter, r *http.Request, user string) {
