@@ -173,3 +173,64 @@ var zigTracks = []Track{
 		},
 	},
 }
+
+// ── JavaScript tracks ─────────────────────────────────
+// These four tracks stand alone, but together they ramp toward the Moon
+// Patrol Ghosts capstone (projects.go): canvas drawing, then game mechanics,
+// then the browser plumbing a game needs, then real-time networking for the
+// ghost milestones.
+
+var javascriptTracks = []Track{
+	{
+		ID:          "canvas",
+		Title:       "Canvas & Animation",
+		Icon:        "🎨",
+		Description: "Draw and animate with the 2D canvas — the foundation of browser games and visualisations",
+		Lessons: []TrackLesson{
+			{1, "Canvas Setup & Coordinates", "The canvas element, getContext('2d'), the pixel coordinate system, and canvas size vs CSS display size"},
+			{2, "Drawing Shapes & Paths", "fillRect and strokeRect, beginPath, lines, arcs and circles, fill and stroke styles"},
+			{3, "Transforms & State", "translate, rotate, scale, save/restore, and drawing relative to a moving origin"},
+			{4, "Text, Gradients & Images", "fillText for HUDs and labels, linear gradients for skies, and drawImage for sprites"},
+			{5, "Animating with requestAnimationFrame", "The browser's frame callback, clearing and redrawing each frame, and time-based motion with delta time"},
+		},
+	},
+	{
+		ID:          "game-dev",
+		Title:       "Game Development",
+		Icon:        "🎮",
+		Description: "The mechanics every 2D game is built from: the loop, input, physics, collision, and cameras",
+		Lessons: []TrackLesson{
+			{1, "The Game Loop", "requestAnimationFrame, delta time, and separating a fixed-timestep update from rendering"},
+			{2, "Keyboard Input State", "Tracking held keys with keydown/keyup and a key-state object, and why event handlers alone aren't enough for games"},
+			{3, "Velocity, Gravity & Jumping", "Position, velocity and acceleration, applying gravity, and tuning a jump arc that feels right"},
+			{4, "Collision Detection", "Axis-aligned bounding boxes, circle overlap, and point-vs-terrain tests"},
+			{5, "Scrolling & Parallax", "World vs screen coordinates, a side-scrolling camera, and background layers moving at different speeds"},
+			{6, "Game States & Entities", "A state machine for title/playing/game-over, and managing arrays of entities that spawn and die"},
+			{7, "Project: One-Screen Arcade Game", "A complete playable arcade game (Breakout or similar) bringing together the loop, input, physics, collision, and state"},
+		},
+	},
+	{
+		ID:          "browser-apis",
+		Title:       "Browser APIs",
+		Icon:        "🧰",
+		Description: "The browser platform beyond the DOM: timing, storage, sound, and the page lifecycle",
+		Lessons: []TrackLesson{
+			{1, "Timers & Scheduling", "setTimeout and setInterval vs requestAnimationFrame, debouncing, and throttling"},
+			{2, "localStorage", "Persisting settings and high scores as JSON, storage limits, and versioning stored data"},
+			{3, "Sound & Audio", "Playing sound effects with the Audio element, overlapping playback, and a taste of the Web Audio API"},
+			{4, "Page Visibility & Lifecycle", "Pausing loops when the tab is hidden, the visibilitychange event, and being a good citizen of the browser"},
+		},
+	},
+	{
+		ID:          "realtime",
+		Title:       "Real-Time & Networking",
+		Icon:        "📡",
+		Description: "From request/response to live data: fetch in depth, streaming, and WebSockets",
+		Lessons: []TrackLesson{
+			{1, "Fetch in Depth", "Request options and methods, status and error handling, JSON round-trips, and AbortController"},
+			{2, "Server-Sent Events", "The EventSource API and reading streamed responses — one-way real-time from server to browser"},
+			{3, "WebSockets", "The WebSocket API: connecting, designing a JSON message protocol, and clean close and error handling"},
+			{4, "Real-Time Patterns", "Heartbeats, reconnecting with backoff, and smoothing remote positions with interpolation"},
+		},
+	},
+}
