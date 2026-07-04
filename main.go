@@ -26,6 +26,7 @@ func main() {
 	loadProgress()
 	loadLessonCache()
 	loadHintsUsed()
+	loadWorkspaces()
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -57,6 +58,7 @@ func main() {
 	http.HandleFunc("/api/hint", requireAuth(handleHint))
 	http.HandleFunc("/api/hints-viewed", requireAuth(handleHintsViewed))
 	http.HandleFunc("/api/chat", requireAuth(handleChat))
+	http.HandleFunc("/api/workspace", requireAuth(handleWorkspace))
 
 	// Advanced tracks
 	http.HandleFunc("/api/tracks", requireAuth(handleTracks))
@@ -66,6 +68,7 @@ func main() {
 	http.HandleFunc("/api/track/hint", requireAuth(handleTrackHint))
 	http.HandleFunc("/api/track/hints-viewed", requireAuth(handleTrackHintsViewed))
 	http.HandleFunc("/api/track/chat", requireAuth(handleTrackChat))
+	http.HandleFunc("/api/track/workspace", requireAuth(handleTrackWorkspace))
 
 	// Capstone projects
 	http.HandleFunc("/api/projects", requireAuth(handleProjects))
@@ -74,6 +77,7 @@ func main() {
 	http.HandleFunc("/api/project/evaluate", requireAuth(handleProjectEvaluate))
 	http.HandleFunc("/api/project/hint", requireAuth(handleProjectHint))
 	http.HandleFunc("/api/project/chat", requireAuth(handleProjectChat))
+	http.HandleFunc("/api/project/workspace", requireAuth(handleProjectWorkspace))
 
 	log.Printf("🚀  Coding Bootcamp → http://localhost:%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))

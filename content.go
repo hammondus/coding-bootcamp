@@ -351,6 +351,7 @@ func handleEvaluate(w http.ResponseWriter, r *http.Request, user string) {
 	if !ok {
 		return
 	}
+	challengeKey := challengeCacheKey(req.Lang, req.TopicID, normalizeDifficulty(req.Difficulty))
 
 	prompt := fmt.Sprintf(`Evaluate this %s code submission for Topic %d: **%s**.
 
@@ -392,9 +393,14 @@ Be encouraging and educational. Note: code cannot be executed — evaluate on lo
 		lang.Name,
 		lang.Name, lang.StyleNote)
 	prompt += lessonContextBlock(user, fmt.Sprintf("%s:lesson:%d", req.Lang, req.TopicID))
-	prompt += hintUsageBlock(user, challengeCacheKey(req.Lang, req.TopicID, normalizeDifficulty(req.Difficulty)))
+	prompt += hintUsageBlock(user, challengeKey)
 
-	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil)
+	// Save the submission and its feedback so the student can come back to
+	// them later. onComplete only fires on a clean finish, so a truncated
+	// evaluation is never saved.
+	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil, func(full string) {
+		storeSolution(user, challengeKey, req.Code, full)
+	})
 }
 
 func handleHint(w http.ResponseWriter, r *http.Request, user string) {
@@ -478,5 +484,10 @@ func handleChat(w http.ResponseWriter, r *http.Request, user string) {
 The student is studying Topic %d: %s. Answer their questions clearly, concisely, and encouragingly. When relevant, ground your answer in the lesson and challenge below.%s`,
 		lang.SystemPrompt, req.TopicID, req.TopicName, ctx)
 
-	streamFromAnthropic(r.Context(), w, system, "", req.Messages)
+	// Save the conversation so it survives a reload. The history the client
+	// sends already includes the newest question; add the answer on top.
+	streamFromAnthropic(r.Context(), w, system, "", req.Messages, func(full string) {
+		storeChat(user, chatStoreKey(req.Lang, req.TopicID),
+			append(req.Messages, Message{Role: "assistant", Content: full}))
+	})
 }

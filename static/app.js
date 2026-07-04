@@ -21,6 +21,11 @@ const S = {
   challenges:   {},
   challengeRaw: {},
 
+  // In-progress editor text parked per challenge key when the user switches
+  // difficulty tiers, so each tier keeps its own draft within the session.
+  // (Submitted solutions are saved server-side — see loadWorkspace.)
+  editorDrafts: {},
+
   // Chat history: lang → cacheKey → [{role,content}]
   chatHistory:  {},
 
@@ -319,6 +324,7 @@ async function logout() {
   S.lessons = {};
   S.challenges = {};
   S.challengeRaw = {};
+  S.editorDrafts = {};
   S.chatHistory = {};
   showLoginModal();
 }
@@ -539,6 +545,7 @@ function selectTopic(id, reset = true) {
     closeEval();
     $('code-editor').value = '';
     renderChat();
+    loadWorkspace(); // restore saved solution / feedback / chat, if any
   }
 }
 
@@ -805,13 +812,21 @@ async function toggleChallengeComplete() {
 
 function setDifficulty(diff) {
   if (S.streaming || diff === S.difficulty) return;
+  // Each tier is its own challenge: park the editor text under the tier we're
+  // leaving and bring back whatever was in progress on the new one.
+  const editor = $('code-editor');
+  S.editorDrafts[activeChallengeKey()] = editor.value;
   S.difficulty = diff;
+  editor.value = S.editorDrafts[activeChallengeKey()] || '';
+  autoResize(editor);
+  closeEval(); // any feedback on screen belongs to the tier we just left
   renderDifficultyBar();
   // Restore this tier's challenge: JS cache → server cache → empty state.
   const key = activeChallengeKey();
   if (S.challenges[key])            showChallengeContent(S.challenges[key]);
   else if (activeChallengeCached()) loadChallenge();
   else                              resetChallengePanel();
+  loadWorkspace(); // restore this tier's saved solution and feedback, if any
 }
 
 // ── Project content ────────────────────────────
@@ -890,6 +905,53 @@ function loadProjectGuidance(force = false) {
       }
     }
   );
+}
+
+// ── Saved workspace ────────────────────────────
+// The server saves student work as it happens: an evaluation stores the
+// submitted code and its feedback (per challenge tier), and each chat exchange
+// stores the conversation (per topic/lesson/milestone). This fetches that
+// saved work for the current selection and restores it, so a solution, its
+// feedback, and the questions asked around it survive a reload just like the
+// challenge text does.
+async function loadWorkspace() {
+  if (!hasSelection()) return;
+  if (briefSelected()) return; // the project brief has no solution or chat
+  const ckey = activeChallengeKey(); // solution + feedback are per tier
+  const skey = activeCacheKey();     // chat is per selection
+  try {
+    const resp = await fetch(endpoint('workspace'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(reqBody({ difficulty: S.difficulty })),
+    });
+    if (!resp.ok) return;
+    const ws = await resp.json();
+
+    // The user may have clicked elsewhere while this was in flight — only
+    // restore into panels that still show the selection we fetched for.
+    if (ws.chat?.length && skey === activeCacheKey() && !S.chatHistory[skey]?.length) {
+      S.chatHistory[skey] = ws.chat;
+      renderChat();
+    }
+    if (ckey !== activeChallengeKey()) return;
+
+    // Saved solution → editor, but never overwrite text already there
+    // (the same rule the starter-code prefill follows).
+    const editor = $('code-editor');
+    if (ws.code && !editor.value.trim()) {
+      editor.value = ws.code;
+      autoResize(editor);
+    }
+    // Saved feedback → feedback panel, unless it's already showing something
+    // (e.g. the user asked for a hint before this fetch came back).
+    if (ws.feedback && $('eval-panel').classList.contains('hidden')) {
+      const out = $('eval-output');
+      $('eval-panel').classList.remove('hidden');
+      out.innerHTML = parseMarkdown(ws.feedback);
+      applyHighlight(out);
+    }
+  } catch (_) {} // restoring saved work is best-effort — never block the UI
 }
 
 // ── Submit / Hint / Eval ───────────────────────
@@ -1173,6 +1235,7 @@ function selectTrackLesson(trackId, lessonId) {
   }
 
   switchTab('lesson');
+  loadWorkspace(); // restore saved solution / feedback / chat, if any
 }
 
 // ── Track content functions ────────────────────
@@ -1308,6 +1371,7 @@ function selectProjectMilestone(projectId, milestoneId) {
   }
 
   switchTab('lesson');
+  loadWorkspace(); // restore saved solution / feedback / chat, if any
 }
 
 async function toggleProjectComplete() {
@@ -1342,6 +1406,7 @@ async function postAuthInit() {
   S.lessons      = {};
   S.challenges   = {};
   S.challengeRaw = {};
+  S.editorDrafts = {};
   S.chatHistory  = {};
 
   $('username-display').textContent = S.user;

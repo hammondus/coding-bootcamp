@@ -329,7 +329,13 @@ Be encouraging. Note: code cannot be executed — evaluate on logic and conventi
 	)
 	prompt += projectBriefBlock(user, fmt.Sprintf("%s:project:%s:brief", req.Lang, req.ProjectID))
 
-	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil)
+	// Save the submission and its feedback so the student can come back to
+	// them later. onComplete only fires on a clean finish, so a truncated
+	// evaluation is never saved.
+	solutionKey := fmt.Sprintf("%s:project:%s:milestone:%d", req.Lang, req.ProjectID, req.MilestoneID)
+	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil, func(full string) {
+		storeSolution(user, solutionKey, req.Code, full)
+	})
 }
 
 func handleProjectHint(w http.ResponseWriter, r *http.Request, user string) {
@@ -399,5 +405,10 @@ Answer their questions clearly and in the context of this project and milestone.
 		lang.SystemPrompt, project.Title, milestone.ID, milestone.Title, ctx,
 	)
 
-	streamFromAnthropic(r.Context(), w, system, "", req.Messages)
+	// Save the conversation so it survives a reload. The history the client
+	// sends already includes the newest question; add the answer on top.
+	streamFromAnthropic(r.Context(), w, system, "", req.Messages, func(full string) {
+		storeChat(user, projectChatStoreKey(req.Lang, req.ProjectID, req.MilestoneID),
+			append(req.Messages, Message{Role: "assistant", Content: full}))
+	})
 }
