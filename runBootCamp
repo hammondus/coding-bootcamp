@@ -1,0 +1,6 @@
+#!/bin/bash
+# Run the bootcamp server. The API key lives in claude.key (gitignored),
+# which holds just the bare key on one line.
+cd "$(dirname "$0")"   # so this works when run from any directory
+export ANTHROPIC_API_KEY=$(cat claude.key)
+go run . "$@"
