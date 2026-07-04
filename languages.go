@@ -197,6 +197,7 @@ Style reminder: JavaScript uses camelCase for variables and functions, PascalCas
 		{ID: 13, Name: "Fetch & APIs"},
 		{ID: 14, Name: "Modules"},
 	},
+	Projects: javascriptProjects,
 }
 
 // ── HTML ──────────────────────────────────────────────

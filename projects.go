@@ -82,3 +82,32 @@ var goProjects = []Project{
 		},
 	},
 }
+
+// ── JavaScript projects ───────────────────────────────
+
+var javascriptProjects = []Project{
+	{
+		// A JavaScript-first game project that grows a Go backend. The ghost
+		// design is deliberate: players never affect each other, so each
+		// client owns its own simulation — no prediction or reconciliation,
+		// just interpolation of other players' positions. Milestones 1–5 are
+		// pure canvas game; 6–8 add the server. Recorded ghosts (7) land
+		// before live ghosts (8) so ghost rendering and networking are never
+		// debugged at the same time.
+		ID:          "moon-patrol",
+		Title:       "Moon Patrol Ghosts",
+		Icon:        "🌙",
+		Description: "Build a canvas remake of the 1982 arcade classic Moon Patrol — an auto-scrolling moon buggy that jumps craters and shoots UFOs, over parallax-scrolling mountains — then add ghost multiplayer: a small Go backend that keeps a leaderboard, replays recorded runs, and relays live players as translucent ghost buggies over WebSockets.",
+		Goal:        "a browser remake of the arcade classic Moon Patrol with ghost multiplayer: a vanilla JavaScript canvas game (no build step, no libraries) where an auto-scrolling moon buggy jumps craters and shoots UFOs with a single fire key that shoots forward and upward at once, across a course with parallax-scrolling background layers — backed by a small Go standard-library server that serves the shared course data, keeps a persistent leaderboard, stores finished runs, and relays live positions over WebSockets so other players appear as translucent, non-interacting ghost buggies. Ghosts never affect your run, so each client owns its own simulation; the only networking trick needed is interpolating ghost positions between updates.",
+		Milestones: []ProjectMilestone{
+			{1, "Canvas, Game Loop & Buggy", "A canvas page with a fixed-timestep requestAnimationFrame loop and the buggy driving on flat lunar ground with keyboard speed control"},
+			{2, "Scrolling Terrain & Parallax", "An auto-scrolling course built from authored segment data — craters and rocks on the surface, mountain and hill layers scrolling at different speeds behind it"},
+			{3, "Jumping, Collision & Checkpoints", "A gravity-based jump arc, collision with craters and rocks, and death/respawn at lettered checkpoints"},
+			{4, "UFOs & Dual Fire", "One fire key shooting forward and upward at once, authored UFO attack waves, and UFO bombs that blast new craters into the terrain ahead"},
+			{5, "HUD, Scoring & Game Over", "Score, lives, checkpoint progress and run time in a HUD, with a game-over and restart loop — the solo game is complete and playable"},
+			{6, "Go Backend: Course & Leaderboard", "A small Go standard-library server that serves the static files and the course as JSON, and keeps a leaderboard persisted atomically to a JSON file"},
+			{7, "Recorded Ghosts", "Runs recorded as timed position samples and posted to the server on finish, then replayed as translucent ghost buggies racing alongside the player"},
+			{8, "Live Ghosts over WebSockets", "A Go broadcast hub relaying each connected player's position a few times a second, rendered as live ghosts with positions interpolated between updates"},
+		},
+	},
+}
