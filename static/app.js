@@ -717,6 +717,15 @@ function loadChallenge(force = false) {
     loadProjectGuidance(force);
     return;
   }
+  // Challenges are generated from their lesson, so the server refuses to make
+  // one before the lesson exists. Catch that here with a friendly nudge —
+  // unless the challenge itself is already cached server-side, which the
+  // server will happily serve regardless.
+  if (!activeChallengeCached() && !activeLessonCached()) {
+    showToast('Load the lesson first — the challenge builds on it', 'info');
+    switchTab('lesson');
+    return;
+  }
   const key = activeChallengeKey();
   $('challenge-empty').classList.add('hidden');
   $('challenge-inner').classList.remove('hidden');

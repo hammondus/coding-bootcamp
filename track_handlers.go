@@ -229,6 +229,16 @@ func handleTrackChallenge(w http.ResponseWriter, r *http.Request, user string) {
 		}
 	}
 
+	// A challenge is generated FROM its lesson: the lesson text goes into the
+	// prompt below so the challenge exercises what was actually taught. So the
+	// lesson must be generated first. The UI checks this too and nudges the
+	// student to the lesson tab; this is the authoritative guard.
+	lessonKey := fmt.Sprintf("%s:track:%s:%d", req.Lang, req.TrackID, req.LessonID)
+	if !cacheHas(user, lessonKey) {
+		http.Error(w, "load the lesson first — the challenge is generated from it", http.StatusConflict)
+		return
+	}
+
 	prevCtx := buildTrackContext(track, lesson.ID)
 
 	prompt := fmt.Sprintf(`Create a coding challenge for Lesson %d: **%s** in the **%s** track (%s).
@@ -283,7 +293,9 @@ hidden until the student chooses to reveal it — so never reference the hints
 from any other section.
 
 Use the starter code above as a base, trimming or extending it to match the
-tier brief.`,
+tier brief. The lesson the student just studied is included below — keep the
+challenge consistent with its terminology and examples, and don't require
+anything it didn't teach.`,
 		lesson.ID, lesson.Title, track.Title, lang.Name,
 		trackAssumedBlock(lang, track),
 		prevCtx,
@@ -294,6 +306,7 @@ tier brief.`,
 		spec.Label,
 		lang.StarterTemplate,
 	)
+	prompt += lessonContextBlock(user, lessonKey)
 
 	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil, func(full string) {
 		cacheStore(user, cacheKey, full)

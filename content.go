@@ -26,10 +26,11 @@ func chatContextBlock(user, lessonKey, challengeKey string) string {
 }
 
 // lessonContextBlock returns the cached lesson for a topic as a reference block
-// to append to a hint or evaluation prompt. Those prompts already include the
-// challenge (sent from the UI) but never the lesson, so the model can't tie its
-// feedback back to what was actually taught. Returns "" if the lesson hasn't
-// been generated yet, so the prompt still works without it.
+// to append to a challenge, hint, or evaluation prompt, so the model can tie
+// what it generates back to what the lesson actually taught. Returns "" if the
+// lesson hasn't been generated yet, so hint/evaluation prompts still work
+// without it (challenge generation refuses to run at all in that case — see
+// handleChallenge).
 func lessonContextBlock(user, lessonKey string) string {
 	if lesson, ok := cacheGet(user, lessonKey); ok {
 		return "\n\n--- THE LESSON THIS CHALLENGE IS BASED ON ---\n" + lesson
@@ -350,6 +351,16 @@ func handleChallenge(w http.ResponseWriter, r *http.Request, user string) {
 		}
 	}
 
+	// A challenge is generated FROM its lesson: the lesson text goes into the
+	// prompt below so the challenge exercises what was actually taught. So the
+	// lesson must be generated first. The UI checks this too and nudges the
+	// student to the lesson tab; this is the authoritative guard.
+	lessonKey := fmt.Sprintf("%s:lesson:%d", req.Lang, req.TopicID)
+	if !cacheHas(user, lessonKey) {
+		http.Error(w, "load the lesson first — the challenge is generated from it", http.StatusConflict)
+		return
+	}
+
 	prompt := fmt.Sprintf(`Create a practical %s coding challenge for Topic %d: **%s**.
 
 **What the course has covered so far** (this topic's lesson included):
@@ -395,13 +406,16 @@ from any other section.
 
 Use the starter code above as a base, trimming or extending it to match the
 tier brief. Keep the challenge centred on %s, exercised through the covered
-skills above. Make it engaging with a real-world flavor.`,
+skills above. Make it engaging with a real-world flavor. The lesson the
+student just studied is included below — keep the challenge consistent with
+its terminology and examples, and don't require anything it didn't teach.`,
 		lang.Name, topic.ID, topic.Name,
 		topicSkillsBlock(lang, topic.ID),
 		sequenceRule(diff),
 		spec.Label, spec.Brief,
 		spec.Label,
 		lang.StarterTemplate, topic.Name)
+	prompt += lessonContextBlock(user, lessonKey)
 
 	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil, func(full string) {
 		cacheStore(user, key, full)
