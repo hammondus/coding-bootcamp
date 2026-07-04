@@ -25,6 +25,18 @@ func buildTrackContext(track Track, upToLessonID int) string {
 	return sb.String()
 }
 
+// trackAssumedBlock states what a track may assume of the student: the
+// language fundamentals always, plus the track's declared prerequisites.
+// Rendered into every track prompt so generated content never silently
+// requires skills taught elsewhere in the curriculum.
+func trackAssumedBlock(lang Language, track Track) string {
+	s := fmt.Sprintf("**Assumed knowledge:** all %s fundamentals topics (the student has completed the full fundamentals course)", lang.Name)
+	if track.Prereqs != "" {
+		s += ", plus " + track.Prereqs
+	}
+	return s + ". Do not require anything taught elsewhere in the curriculum but not listed here."
+}
+
 // findTrackLesson looks up a track and lesson by ID within a language.
 func findTrackLesson(lang Language, trackID string, lessonID int) (Track, TrackLesson, bool) {
 	for _, t := range lang.Tracks {
@@ -143,6 +155,8 @@ func handleTrackLesson(w http.ResponseWriter, r *http.Request, user string) {
 
 %s
 
+%s
+
 ---
 
 ## Your task: teach **%s**
@@ -171,6 +185,7 @@ A more complete or practical usage, building directly on Example 1.
 One sentence: what the student can now do that they couldn't before this lesson.`,
 		lesson.ID, len(track.Lessons), track.Title, lang.Name,
 		track.Description,
+		trackAssumedBlock(lang, track),
 		prevCtx,
 		lesson.Title,
 		continuity,
@@ -220,6 +235,13 @@ func handleTrackChallenge(w http.ResponseWriter, r *http.Request, user string) {
 
 %s
 
+%s
+
+**The covered skills for this challenge are:** the assumed knowledge above, the
+previous lessons listed above, and this lesson's own material (**%s**).
+
+%s
+
 This is the **%s** tier of four (Beginner → Intermediate → Advanced → GOAT).
 Tier brief: %s
 
@@ -263,7 +285,10 @@ from any other section.
 Use the starter code above as a base, trimming or extending it to match the
 tier brief.`,
 		lesson.ID, lesson.Title, track.Title, lang.Name,
+		trackAssumedBlock(lang, track),
 		prevCtx,
+		lesson.Title,
+		sequenceRule(diff),
 		spec.Label, spec.Brief,
 		lesson.Title,
 		spec.Label,
@@ -329,6 +354,11 @@ or something the lesson teaches — do not flag it as an issue or style problem.
 "in real-world code you'd usually..." aside is fine, but the verdict and Issues section
 must judge the code against the requirements as written.
 
+Judge within the course. The student's covered set is: %s Plus the lessons of
+this track up to and including Lesson %d. Never fail the submission or list an
+issue for not using techniques beyond that set; a one-line "later you'll
+learn..." aside is fine.
+
 Stretch goals are optional extras: never fail or penalize a submission for skipping
 them. If the student attempted one, evaluate the attempt and celebrate it in
 **What Works Well**.
@@ -339,6 +369,7 @@ Be encouraging. Note: code cannot be executed — evaluate on logic and conventi
 		lang.ID, req.Code,
 		track.Title,
 		lang.Name, lang.StyleNote,
+		trackAssumedBlock(lang, track), lesson.ID,
 	)
 	prompt += lessonContextBlock(user, fmt.Sprintf("%s:track:%s:%d", req.Lang, req.TrackID, req.LessonID))
 	prompt += hintUsageBlock(user, challengeKey)
@@ -380,7 +411,8 @@ Challenge:
 Student's current code:
 `+"```%s\n%s\n```"+`
 
-Give ONE specific, encouraging nudge. Maximum 3 sentences. Don't reveal the answer.`,
+Give ONE specific, encouraging nudge. Maximum 3 sentences. Don't reveal the answer.
+Stay within the skills the challenge itself uses — don't hint toward techniques the course hasn't covered yet.`,
 		lang.Name, lesson.Title, track.Title,
 		req.Challenge, lang.ID, req.Code,
 	)
@@ -444,8 +476,10 @@ func handleTrackChat(w http.ResponseWriter, r *http.Request, user string) {
 	)
 	system := fmt.Sprintf(`%s
 The student is working through the **%s** track, Lesson %d: %s.
-Answer their questions clearly and in the context of this specific lesson and track. When relevant, ground your answer in the lesson and challenge below.%s`,
-		lang.SystemPrompt, track.Title, lesson.ID, lesson.Title, ctx,
+%s
+Answer their questions clearly and in the context of this specific lesson and track. Keep answers within the covered material where possible. When relevant, ground your answer in the lesson and challenge below.%s`,
+		lang.SystemPrompt, track.Title, lesson.ID, lesson.Title,
+		trackAssumedBlock(lang, track), ctx,
 	)
 
 	// Save the conversation so it survives a reload. The history the client

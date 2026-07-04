@@ -79,6 +79,13 @@ func buildProjectContext(p Project, upToMilestoneID int) string {
 	return sb.String()
 }
 
+// projectAssumedBlock states what a capstone assumes the student has already
+// covered (from Project.Prereqs). Rendered into the brief, milestone,
+// evaluate, and chat prompts so guidance stays within taught material.
+func projectAssumedBlock(p Project) string {
+	return "**Assumed knowledge:** " + p.Prereqs + ". Do not require anything beyond this; where a milestone introduces something new (as noted in the prerequisites), teach it in that milestone's guidance."
+}
+
 // projectBriefBlock pulls the cached project brief out of the cache so milestone,
 // evaluate, hint, and chat prompts can ground their output in the agreed spec.
 // Returns "" if the brief hasn't been generated yet, so prompts still work.
@@ -173,6 +180,8 @@ func handleProjectBrief(w http.ResponseWriter, r *http.Request, user string) {
 
 **The goal:** %s
 
+%s
+
 **The milestone roadmap (the student will build these in order):**
 %s
 
@@ -194,11 +203,13 @@ The recommended file/package layout and the main types or functions, with one se
 A short paragraph tying the roadmap above into the architecture, so the student sees where each step is heading.
 
 ## Skills You'll Draw On
-A short bullet list of the fundamentals and advanced concepts this project exercises.
+A short bullet list of the fundamentals, tracks, and lessons this project exercises —
+base it on the assumed knowledge above, so the student can check they've covered it.
 
 Be encouraging. Frame it as "from scratch, bringing together everything you've learned."`,
 		lang.Name, project.Title,
 		project.Goal,
+		projectAssumedBlock(project),
 		projectRoadmap(project),
 		project.Title,
 		lang.Name,
@@ -242,6 +253,8 @@ func handleProjectMilestone(w http.ResponseWriter, r *http.Request, user string)
 
 %s
 
+%s
+
 ## Your task: guide them through **%s**
 
 Give focused build guidance for THIS milestone only — not the whole project, and not a finished solution. Structure it as:
@@ -260,6 +273,7 @@ Clear acceptance criteria: how the student knows this milestone works before mov
 
 Be encouraging and concrete.`,
 		project.Title, lang.Name, milestone.ID, len(project.Milestones), milestone.Title,
+		projectAssumedBlock(project),
 		prevCtx,
 		milestone.Title,
 		lang.Name,
@@ -320,12 +334,16 @@ flag it as an issue or style problem. A brief "in real-world code you'd usually.
 aside is fine, but the verdict and Issues section must judge the code against the
 guidance as written.
 
+Judge within the course. %s Never fail the submission or list an issue for not
+using techniques beyond that set and the milestone guidance itself.
+
 Be encouraging. Note: code cannot be executed — evaluate on logic and conventions.`,
 		lang.Name, project.Title, milestone.ID, milestone.Title,
 		req.Challenge,
 		lang.ID, req.Code,
 		lang.Name,
 		lang.Name, lang.StyleNote,
+		projectAssumedBlock(project),
 	)
 	prompt += projectBriefBlock(user, fmt.Sprintf("%s:project:%s:brief", req.Lang, req.ProjectID))
 
@@ -401,8 +419,10 @@ func handleProjectChat(w http.ResponseWriter, r *http.Request, user string) {
 	}
 	system := fmt.Sprintf(`%s
 The student is building the **%s** project, currently on Milestone %d: %s.
-Answer their questions clearly and in the context of this project and milestone. Help them think it through — guide, don't just hand over the whole solution. When relevant, ground your answer in the brief and milestone guidance below.%s`,
-		lang.SystemPrompt, project.Title, milestone.ID, milestone.Title, ctx,
+%s
+Answer their questions clearly and in the context of this project and milestone. Help them think it through — guide, don't just hand over the whole solution. Keep answers within the covered material where possible. When relevant, ground your answer in the brief and milestone guidance below.%s`,
+		lang.SystemPrompt, project.Title, milestone.ID, milestone.Title,
+		projectAssumedBlock(project), ctx,
 	)
 
 	// Save the conversation so it survives a reload. The history the client

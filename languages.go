@@ -1,9 +1,14 @@
 package main
 
-// Topic is a single lesson in a bootcamp curriculum.
+// Topic is a single lesson in a bootcamp curriculum. Skills is the contract
+// between lessons and challenges: the lesson prompt must teach these skills,
+// and challenge prompts may only require skills from this topic and earlier
+// ones (see topicSkillsBlock in content.go). Keep each entry a concrete
+// one-liner, like TrackLesson summaries.
 type Topic struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
+	ID     int    `json:"id"`
+	Name   string `json:"name"`
+	Skills string `json:"-"`
 }
 
 // TrackLesson is one lesson within an advanced track.
@@ -19,7 +24,12 @@ type Track struct {
 	Title       string
 	Icon        string
 	Description string
-	Lessons     []TrackLesson
+	// Prereqs names what this track assumes beyond the language fundamentals
+	// (other tracks or specific lessons). It is rendered into every track
+	// prompt so generated content never requires skills taught elsewhere
+	// without saying so. Empty = fundamentals only.
+	Prereqs string
+	Lessons []TrackLesson
 }
 
 // ProjectMilestone is one build step within a project. Unlike a TrackLesson
@@ -41,7 +51,11 @@ type Project struct {
 	Icon        string
 	Description string
 	Goal        string // one-line end goal, fed into the brief and milestone prompts
-	Milestones  []ProjectMilestone
+	// Prereqs names the fundamentals and tracks this capstone assumes. It is
+	// rendered into the brief, milestone, evaluate, and chat prompts so the
+	// student knows what to have covered and the guidance stays within it.
+	Prereqs    string
+	Milestones []ProjectMilestone
 }
 
 // Language defines a bootcamp language's complete configuration.
@@ -104,21 +118,42 @@ You teach Go clearly, practically, and engagingly. You are patient and encouragi
 Format all responses in Markdown. Use triple-backtick go fences for all Go code examples.
 Be concise but thorough. Include practical, real-world examples.
 Style reminder: Go uses camelCase for unexported names and PascalCase for exported names. Flag naming issues if you see them.`,
+	// Topic order is a strict teaching sequence: a challenge may only require
+	// skills from its own topic and earlier ones. Closures & Defer must stay
+	// before Goroutines & Channels (go func(){} is a closure; defer unlocks
+	// mutexes), and Strings & Runes earns its own topic because string work
+	// appears in most challenges.
 	Topics: []Topic{
-		{ID: 1, Name: "Program Structure"},
-		{ID: 2, Name: "Variables & Types"},
-		{ID: 3, Name: "Control Flow"},
-		{ID: 4, Name: "Loops"},
-		{ID: 5, Name: "Functions"},
-		{ID: 6, Name: "Arrays & Slices"},
-		{ID: 7, Name: "Maps"},
-		{ID: 8, Name: "Structs"},
-		{ID: 9, Name: "Pointers"},
-		{ID: 10, Name: "Methods"},
-		{ID: 11, Name: "Interfaces"},
-		{ID: 12, Name: "Error Handling"},
-		{ID: 13, Name: "Goroutines & Channels"},
-		{ID: 14, Name: "Closures & Defer"},
+		{ID: 1, Name: "Program Structure",
+			Skills: "package main, func main, imports, comments, go run; printing with fmt.Println, fmt.Printf verbs (%v %s %d), and fmt.Sprintf"},
+		{ID: 2, Name: "Variables & Types",
+			Skills: "var and := declarations, basic types (int, float64, string, bool), zero values, constants and iota, type conversions, string concatenation with +"},
+		{ID: 3, Name: "Control Flow",
+			Skills: "if / else if / else, comparison and logical operators, switch with cases and default, the if-with-statement form"},
+		{ID: 4, Name: "Loops",
+			Skills: "for in all forms (classic, while-style, infinite), break and continue, nested loops, looping over a counter"},
+		{ID: 5, Name: "Functions",
+			Skills: "parameters and return values, multiple returns, named results, variadic functions, functions as values"},
+		{ID: 6, Name: "Arrays & Slices",
+			Skills: "arrays vs slices, make, append, len and cap, slicing syntax, range over slices, copy"},
+		{ID: 7, Name: "Strings & Runes",
+			Skills: "immutability, bytes vs runes, ranging over a string, building strings efficiently, strings package basics (Contains, Split, Join, Fields, ToUpper), strconv.Atoi / Itoa"},
+		{ID: 8, Name: "Maps",
+			Skills: "make, insert / update / delete, the comma-ok lookup, ranging over maps, maps as counters and sets"},
+		{ID: 9, Name: "Structs",
+			Skills: "defining struct types, literals and field access, nested structs, anonymous structs, structs in slices and maps"},
+		{ID: 10, Name: "Pointers",
+			Skills: "& and *, pointers to structs, pass-by-value vs pointer semantics, when a function needs a pointer, new"},
+		{ID: 11, Name: "Methods",
+			Skills: "method declarations, value vs pointer receivers, method sets, constructor functions by convention (NewX)"},
+		{ID: 12, Name: "Interfaces",
+			Skills: "defining interfaces, implicit satisfaction, the empty interface / any, type assertions with comma-ok, fmt.Stringer"},
+		{ID: 13, Name: "Error Handling",
+			Skills: "the error interface, returning and checking errors, errors.New and fmt.Errorf with %w, sentinel errors, errors.Is / errors.As"},
+		{ID: 14, Name: "Closures & Defer",
+			Skills: "anonymous functions, closures capturing variables, defer semantics and LIFO ordering, defer for cleanup patterns"},
+		{ID: 15, Name: "Goroutines & Channels",
+			Skills: "go statements (including go func closures), channels: send / receive / close, buffered channels, range over channels, select, sync.WaitGroup"},
 	},
 	Tracks:   goTracks,
 	Projects: goProjects,
@@ -143,21 +178,38 @@ Format all responses in Markdown. Use triple-backtick zig fences for all Zig cod
 Be concise but thorough. Include practical, real-world examples.
 Key Zig principles: no hidden control flow, no hidden allocations, explicit error handling with try/catch, comptime over runtime generics.
 Style reminder: Zig uses snake_case for variables and function names, PascalCase for types and structs. Flag naming issues if you see them.`,
+	// Optionals come before Error Handling deliberately: both use |v| payload
+	// capture, and optionals are the simpler introduction to it. Printing with
+	// .{} tuples is taught as a recipe in topic 1 and fully explained at Structs.
 	Topics: []Topic{
-		{ID: 1, Name: "Program Structure"},
-		{ID: 2, Name: "Variables & Types"},
-		{ID: 3, Name: "Control Flow"},
-		{ID: 4, Name: "Loops"},
-		{ID: 5, Name: "Functions"},
-		{ID: 6, Name: "Arrays & Slices"},
-		{ID: 7, Name: "Pointers"},
-		{ID: 8, Name: "Structs"},
-		{ID: 9, Name: "Enums & Unions"},
-		{ID: 10, Name: "Error Handling"},
-		{ID: 11, Name: "Optionals"},
-		{ID: 12, Name: "Allocators & Memory"},
-		{ID: 13, Name: "Comptime"},
-		{ID: 14, Name: "Build System & Testing"},
+		{ID: 1, Name: "Program Structure",
+			Skills: "const std = @import(\"std\"), pub fn main, comments, zig run; printing with std.debug.print and its .{} argument tuple (taught as a recipe, fully explained in Structs)"},
+		{ID: 2, Name: "Variables & Types",
+			Skills: "const vs var, integer and float types (i32, u8, f64...), type inference, undefined, @as and integer casts"},
+		{ID: 3, Name: "Control Flow",
+			Skills: "if / else as statements and as expressions, switch with ranges and else, logical operators, comparison operators"},
+		{ID: 4, Name: "Loops",
+			Skills: "while with continue expressions, for over slices and index ranges, break and continue, labeled loops"},
+		{ID: 5, Name: "Functions",
+			Skills: "fn syntax, parameters and return types, pub, early returns, calling conventions of small pure functions"},
+		{ID: 6, Name: "Arrays & Slices",
+			Skills: "fixed arrays, slices, strings as []const u8, slicing syntax, string literals, iterating bytes, std.mem.eql for comparison"},
+		{ID: 7, Name: "Pointers",
+			Skills: "*T single-item pointers, &, dereference with .*, const pointers, pointers vs slices"},
+		{ID: 8, Name: "Structs",
+			Skills: "struct definition, field defaults, struct literals (and why .{} tuples worked all along), namespaced functions with self, returning structs"},
+		{ID: 9, Name: "Enums & Unions",
+			Skills: "enum declaration, exhaustive switch on enums, methods on enums, tagged unions, payload capture with |v|"},
+		{ID: 10, Name: "Optionals",
+			Skills: "?T, null, orelse, if (x) |v| capture, while (it.next()) |v| iteration, optional pointers"},
+		{ID: 11, Name: "Error Handling",
+			Skills: "error sets, error unions !T, try, catch with capture, errdefer, main returning anyerror!void"},
+		{ID: 12, Name: "Allocators & Memory",
+			Skills: "the allocator parameter convention, GeneralPurposeAllocator, alloc / free with defer, std.ArrayList and std.StringHashMap basics"},
+		{ID: 13, Name: "Comptime",
+			Skills: "comptime values and blocks, comptime function parameters, anytype, generic functions returning types"},
+		{ID: 14, Name: "Build System & Testing",
+			Skills: "zig init layout, build.zig at a glance, test blocks, std.testing.expect / expectEqual / expectError, zig test"},
 	},
 	Tracks: zigTracks,
 }
@@ -181,21 +233,38 @@ Format all responses in Markdown. Use triple-backtick js fences for all JavaScri
 Be concise but thorough. Include practical, real-world examples.
 Teach modern JavaScript (ES2015+): prefer const/let over var, arrow functions, template literals, destructuring, and async/await.
 Style reminder: JavaScript uses camelCase for variables and functions, PascalCase for classes, and strict equality (===) over loose (==). Flag issues if you see them.`,
+	// Strings sit at 3 (not after Objects) because template literals and string
+	// methods appear in nearly every challenge; Arrays come after Functions so
+	// callback methods (map, filter) have been prepared for.
 	Topics: []Topic{
-		{ID: 1, Name: "Variables & Types"},
-		{ID: 2, Name: "Operators & Expressions"},
-		{ID: 3, Name: "Control Flow"},
-		{ID: 4, Name: "Loops"},
-		{ID: 5, Name: "Functions & Arrow Functions"},
-		{ID: 6, Name: "Arrays"},
-		{ID: 7, Name: "Objects"},
-		{ID: 8, Name: "Strings & Template Literals"},
-		{ID: 9, Name: "Scope & Closures"},
-		{ID: 10, Name: "The DOM"},
-		{ID: 11, Name: "Events"},
-		{ID: 12, Name: "Promises & Async/Await"},
-		{ID: 13, Name: "Fetch & APIs"},
-		{ID: 14, Name: "Modules"},
+		{ID: 1, Name: "Variables & Types",
+			Skills: "const and let (never var), primitives, typeof, null vs undefined; printing with console.log"},
+		{ID: 2, Name: "Operators & Expressions",
+			Skills: "arithmetic operators, strict equality === over ==, logical && || !, ternary, truthiness and falsy values"},
+		{ID: 3, Name: "Strings & Template Literals",
+			Skills: "template literals and ${}, length, slice / includes / split / trim / toUpperCase / padStart, immutability, comparing strings"},
+		{ID: 4, Name: "Control Flow",
+			Skills: "if / else if / else, switch, guard clauses and early returns"},
+		{ID: 5, Name: "Loops",
+			Skills: "for, while, for...of over strings, break and continue, nested loops"},
+		{ID: 6, Name: "Functions & Arrow Functions",
+			Skills: "declarations vs expressions, arrow syntax, default and rest parameters, return values, functions as arguments (callbacks)"},
+		{ID: 7, Name: "Arrays",
+			Skills: "literals, index and length, push / pop / shift / slice / indexOf, for...of, callback methods: forEach, map, filter, find, reduce, sort"},
+		{ID: 8, Name: "Objects",
+			Skills: "object literals, dot vs bracket access, methods and this basics, destructuring, spread, JSON.stringify / JSON.parse"},
+		{ID: 9, Name: "Scope & Closures",
+			Skills: "block vs function scope, closures capturing variables, counters and factories, common closure pitfalls in loops"},
+		{ID: 10, Name: "The DOM",
+			Skills: "querySelector / querySelectorAll, textContent vs innerHTML, createElement and append, classList, dataset, styles"},
+		{ID: 11, Name: "Events",
+			Skills: "addEventListener, the event object, bubbling and delegation, preventDefault, reading form inputs"},
+		{ID: 12, Name: "Promises & Async/Await",
+			Skills: "the event loop in brief, promises and .then / .catch, async functions and await, try/catch around await, Promise.all"},
+		{ID: 13, Name: "Fetch & APIs",
+			Skills: "fetch for GET and POST, response.ok and status, .json(), request headers and bodies, error handling around network calls"},
+		{ID: 14, Name: "Modules",
+			Skills: "export and import (named and default), script type=\"module\", splitting code across files"},
 	},
 	Tracks:   javascriptTracks,
 	Projects: javascriptProjects,
@@ -220,19 +289,34 @@ Format all responses in Markdown. Use triple-backtick html fences for all HTML c
 Be concise but thorough. Include practical, real-world examples.
 Emphasise semantic, accessible markup: the right element for the job, alt text on images, labels on form controls, and a valid document structure.
 Style reminder: prefer semantic elements (header, nav, main, article, section, footer) over generic divs, and lowercase tag and attribute names. Flag issues if you see them.`,
+	// The attribute mechanism (name="value", id, class) is pinned to topic 1
+	// because attributes are used from topic 3 onward; topic 9 focuses on what
+	// it was really about — the <head>.
 	Topics: []Topic{
-		{ID: 1, Name: "Document Structure"},
-		{ID: 2, Name: "Text & Headings"},
-		{ID: 3, Name: "Links & Navigation"},
-		{ID: 4, Name: "Images & Media"},
-		{ID: 5, Name: "Lists"},
-		{ID: 6, Name: "Tables"},
-		{ID: 7, Name: "Forms & Inputs"},
-		{ID: 8, Name: "Semantic Elements"},
-		{ID: 9, Name: "Attributes & Metadata"},
-		{ID: 10, Name: "Accessibility"},
-		{ID: 11, Name: "Embedding Content"},
-		{ID: 12, Name: "Forms Validation"},
+		{ID: 1, Name: "Document Structure",
+			Skills: "doctype, html / head / body, charset and title, lang; how attributes work (name=\"value\"), id and class"},
+		{ID: 2, Name: "Text & Headings",
+			Skills: "h1-h6 hierarchy, p, strong and em, br and hr, blockquote, HTML entities (&amp;, &lt;)"},
+		{ID: 3, Name: "Links & Navigation",
+			Skills: "a and href (absolute, relative, #anchors, mailto), target and rel, title; grouping links into a simple nav"},
+		{ID: 4, Name: "Images & Media",
+			Skills: "img with src and meaningful alt, width / height, figure and figcaption, audio and video basics with controls"},
+		{ID: 5, Name: "Lists",
+			Skills: "ul / ol / li, nesting lists, dl / dt / dd, start and type attributes, lists inside nav"},
+		{ID: 6, Name: "Tables",
+			Skills: "table / tr / td / th, thead / tbody / tfoot, caption, colspan and rowspan, scope for header cells"},
+		{ID: 7, Name: "Forms & Inputs",
+			Skills: "form action and method, input types, label with for, name attributes, textarea, select and option, button types"},
+		{ID: 8, Name: "Semantic Elements",
+			Skills: "header, nav, main, article, section, aside, footer; choosing the right element, when a div is fine"},
+		{ID: 9, Name: "Metadata & the <head>",
+			Skills: "meta viewport and description, favicon links, linking CSS and JS (defer), Open Graph basics"},
+		{ID: 10, Name: "Accessibility",
+			Skills: "alt text quality, label association, heading order, landmark elements, keyboard focus, ARIA only when HTML can't"},
+		{ID: 11, Name: "Embedding Content",
+			Skills: "iframe and its attributes, embedding maps and video players, inline svg basics, details / summary"},
+		{ID: 12, Name: "Forms Validation",
+			Skills: "required, min / max / maxlength, pattern, type-driven validation (email, url, number), novalidate, validation UX"},
 	},
 }
 
@@ -255,19 +339,35 @@ Format all responses in Markdown. Use triple-backtick css fences for all CSS cod
 Be concise but thorough. Include practical, real-world examples.
 Emphasise modern layout (flexbox and grid), the box model, specificity, and responsive design with relative units and media queries.
 Style reminder: prefer class selectors over IDs for styling, keep specificity low, and use relative units (rem/em) where appropriate. Flag issues if you see them.`,
+	// Transforms come before Transitions because the canonical transition
+	// animates a transform. Units get an explicit home in The Box Model.
+	// CSS challenges assume basic HTML; the prompts state that prerequisite.
 	Topics: []Topic{
-		{ID: 1, Name: "Selectors"},
-		{ID: 2, Name: "Colors & Backgrounds"},
-		{ID: 3, Name: "The Box Model"},
-		{ID: 4, Name: "Typography"},
-		{ID: 5, Name: "Display & Layout"},
-		{ID: 6, Name: "Flexbox"},
-		{ID: 7, Name: "Grid"},
-		{ID: 8, Name: "Positioning"},
-		{ID: 9, Name: "Pseudo-classes & Pseudo-elements"},
-		{ID: 10, Name: "Transitions & Animations"},
-		{ID: 11, Name: "Transforms"},
-		{ID: 12, Name: "Custom Properties"},
-		{ID: 13, Name: "Responsive Design"},
+		{ID: 1, Name: "Selectors",
+			Skills: "element / class / id selectors, grouping, descendant and child combinators, specificity basics, the cascade"},
+		{ID: 2, Name: "Colors & Backgrounds",
+			Skills: "color formats (named, hex, rgb, hsl), opacity and alpha, background-color / image / size / position, simple gradients"},
+		{ID: 3, Name: "The Box Model",
+			Skills: "content / padding / border / margin, box-sizing: border-box, width and height; units: px, %, rem, em and when to use each"},
+		{ID: 4, Name: "Typography",
+			Skills: "font-family stacks, font-size and line-height, font-weight, text-align / decoration / transform, letter-spacing, web fonts"},
+		{ID: 5, Name: "Display & Layout",
+			Skills: "display block / inline / inline-block / none, normal flow, margin collapsing, overflow, centering basics"},
+		{ID: 6, Name: "Flexbox",
+			Skills: "display: flex, direction, justify-content and align-items, gap, flex grow / shrink / basis, wrapping"},
+		{ID: 7, Name: "Grid",
+			Skills: "grid-template-columns / rows, fr and repeat, gap, placing items with line numbers, grid-template-areas"},
+		{ID: 8, Name: "Positioning",
+			Skills: "static / relative / absolute / fixed / sticky, offsets, z-index and stacking basics, positioning within a relative parent"},
+		{ID: 9, Name: "Pseudo-classes & Pseudo-elements",
+			Skills: ":hover / :focus / :active, :nth-child, :first-child / :last-child, ::before and ::after with content"},
+		{ID: 10, Name: "Transforms",
+			Skills: "translate / rotate / scale / skew, transform-origin, combining transforms, transforms don't affect layout"},
+		{ID: 11, Name: "Transitions & Animations",
+			Skills: "transition property / duration / timing-function / delay, transitioning transforms and colors, @keyframes, animation shorthand"},
+		{ID: 12, Name: "Custom Properties",
+			Skills: "--variables and var(), defining on :root, fallback values, scoping to components, theming patterns"},
+		{ID: 13, Name: "Responsive Design",
+			Skills: "media queries, mobile-first workflow, relative units in practice, responsive images, clamp() and fluid type"},
 	},
 }

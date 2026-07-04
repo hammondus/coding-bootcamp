@@ -5,12 +5,28 @@ package main
 // To add a track for a new language: create a new var here and assign it
 // in the Language definition in languages.go.
 
+// goTracks are listed with prerequisites first: Standard Library leads because
+// HTTP (JSON bodies) and two other tracks build on it.
 var goTracks = []Track{
+	{
+		ID:          "standard-library",
+		Title:       "Standard Library",
+		Icon:        "📚",
+		Description: "Master the most useful packages in Go's rich standard library",
+		Lessons: []TrackLesson{
+			{1, "strings & strconv", "String manipulation, strings.Builder, and type conversion with strconv"},
+			{2, "io, bufio & os", "Readers, writers, buffered I/O, and file operations"},
+			{3, "time & context", "Time parsing and formatting, context cancellation, and deadlines"},
+			{4, "encoding/json", "Marshaling, unmarshaling, struct tags, custom marshalers, and streaming"},
+			{5, "sync & atomic", "Mutex, RWMutex, WaitGroup, Once, and low-level atomic operations"},
+		},
+	},
 	{
 		ID:          "http",
 		Title:       "HTTP",
 		Icon:        "🌐",
 		Description: "Build robust HTTP clients and servers, from simple requests to production-ready APIs",
+		Prereqs:     "the Standard Library track, lessons 1-4 (JSON request and response bodies appear from lesson 2 onward and encoding/json is taught there)",
 		Lessons: []TrackLesson{
 			{1, "Simple GET Requests", "Using http.Get to fetch data, reading the response body, and checking status codes"},
 			{2, "POST Requests & Bodies", "Sending data with http.Post, constructing JSON bodies, and http.NewRequest"},
@@ -32,19 +48,6 @@ var goTracks = []Track{
 			{2, "Packages & Visibility", "Package design, exported vs unexported identifiers, and naming conventions"},
 			{3, "Internal Packages", "The internal directory, restricting package access, and clean API boundaries"},
 			{4, "Layered Architecture", "Separating concerns: handlers, services, repositories, models — and why it matters"},
-		},
-	},
-	{
-		ID:          "standard-library",
-		Title:       "Standard Library",
-		Icon:        "📚",
-		Description: "Master the most useful packages in Go's rich standard library",
-		Lessons: []TrackLesson{
-			{1, "strings & strconv", "String manipulation, strings.Builder, and type conversion with strconv"},
-			{2, "io, bufio & os", "Readers, writers, buffered I/O, and file operations"},
-			{3, "time & context", "Time parsing and formatting, context cancellation, and deadlines"},
-			{4, "encoding/json", "Marshaling, unmarshaling, struct tags, custom marshalers, and streaming"},
-			{5, "sync & atomic", "Mutex, RWMutex, WaitGroup, Once, and low-level atomic operations"},
 		},
 	},
 	{
@@ -76,6 +79,7 @@ var goTracks = []Track{
 		Title:       "Testing",
 		Icon:        "🧪",
 		Description: "Build confidence in your code with Go's testing tools",
+		Prereqs:     "for lesson 5 only, the HTTP track lessons 5-7 (httptest exercises HTTP handlers); lessons 1-4 need nothing beyond fundamentals",
 		Lessons: []TrackLesson{
 			{1, "Unit Tests", "testing.T, t.Fatal vs t.Error, test helpers, and the go test command"},
 			{2, "Table-Driven Tests", "Test cases as data, t.Run subtests, and naming conventions"},
@@ -89,6 +93,7 @@ var goTracks = []Track{
 		Title:       "Documentation",
 		Icon:        "📖",
 		Description: "Write documentation that delights users and makes your code self-explanatory",
+		Prereqs:     "the Testing track, lesson 1 (testable examples run under go test)",
 		Lessons: []TrackLesson{
 			{1, "godoc Conventions", "Doc comment format, package-level docs, deprecation notices, and cross-links"},
 			{2, "Testable Examples", "Example functions, Output comments, and how they appear on pkg.go.dev"},
@@ -100,6 +105,7 @@ var goTracks = []Track{
 		Title:       "Profiling & Optimisation",
 		Icon:        "⚡",
 		Description: "Find and fix performance bottlenecks using Go's built-in profiling tools",
+		Prereqs:     "the Testing track, lessons 1-2 (profiling is benchmark-driven); lesson 4 leans on the Goroutines & Channels fundamentals topic",
 		Lessons: []TrackLesson{
 			{1, "pprof Basics", "CPU and heap profiling, go tool pprof, and reading flame graphs"},
 			{2, "Benchmarks & Measurement", "Writing meaningful benchmarks, -benchmem, and avoiding false measurements"},
@@ -121,7 +127,7 @@ var zigTracks = []Track{
 			{1, "HTTP Client Basics", "Using std.http.Client to make GET requests, reading response bodies"},
 			{2, "POST Requests & Headers", "Sending data, custom headers, and handling different content types"},
 			{3, "Simple HTTP Server", "std.http.Server, accepting connections, and writing responses"},
-			{4, "JSON over HTTP", "Combining std.json with HTTP to build a simple data API"},
+			{4, "JSON over HTTP", "Combining std.json with HTTP to build a simple data API — std.json itself (parse and stringify) is taught in this lesson, no prior JSON lesson exists"},
 			{5, "Project: REST Client & Server", "A complete HTTP application with structured client and server components"},
 		},
 	},
@@ -199,6 +205,7 @@ var javascriptTracks = []Track{
 		Title:       "Game Development",
 		Icon:        "🎮",
 		Description: "The mechanics every 2D game is built from: the loop, input, physics, collision, and cameras",
+		Prereqs:     "the Canvas & Animation track (lesson 1 builds directly on requestAnimationFrame and canvas drawing from Canvas lessons 1-5)",
 		Lessons: []TrackLesson{
 			{1, "The Game Loop", "requestAnimationFrame, delta time, and separating a fixed-timestep update from rendering"},
 			{2, "Keyboard Input State", "Tracking held keys with keydown/keyup and a key-state object, and why event handlers alone aren't enough for games"},

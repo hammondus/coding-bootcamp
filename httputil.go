@@ -60,6 +60,19 @@ func lookupLang(w http.ResponseWriter, id string) (Language, bool) {
 	return lang, ok
 }
 
+// lookupTopic resolves a fundamentals topic within a language, writing a 400
+// and returning ok=false when it's unknown. Handlers use the returned Topic's
+// Name and Skills rather than trusting the client-supplied topic name.
+func lookupTopic(w http.ResponseWriter, lang Language, topicID int) (Topic, bool) {
+	for _, t := range lang.Topics {
+		if t.ID == topicID {
+			return t, true
+		}
+	}
+	http.Error(w, "unknown topic", http.StatusBadRequest)
+	return Topic{}, false
+}
+
 // lookupTrackLesson resolves a track + lesson within a language, writing a 400
 // and returning ok=false when either is unknown.
 func lookupTrackLesson(w http.ResponseWriter, lang Language, trackID string, lessonID int) (Track, TrackLesson, bool) {

@@ -81,7 +81,7 @@ var difficultySpec = map[string]struct {
 	},
 	"goat": {
 		Label: "GOAT 🐐",
-		Brief: "Greatest Of All Time: a brutally hard challenge for bragging rights. Push the topic to its limits — tricky constraints, nasty edge cases, a correctness or performance twist — and give no starter code beyond an empty function or file skeleton. May take an hour or more, but it must still be solvable with this topic plus general fundamentals.",
+		Brief: "Greatest Of All Time: a brutally hard challenge for bragging rights. Push the topic to its limits — tricky constraints, nasty edge cases, a correctness or performance twist — and give no starter code beyond an empty function or file skeleton. May take an hour or more. Get the difficulty from depth on covered material; the sequence rule states what may be assumed and how any reach beyond it must be flagged.",
 	},
 }
 
@@ -112,6 +112,46 @@ func trackChallengeCacheKey(langID, trackID string, lessonID int, diff string) s
 		return fmt.Sprintf("%s:track:%s:challenge:%d", langID, trackID, lessonID)
 	}
 	return fmt.Sprintf("%s:track:%s:challenge:%d:%s", langID, trackID, lessonID, diff)
+}
+
+// ── The teaching sequence ─────────────────────────────
+//
+// Topic order is a strict sequence: a lesson may assume earlier topics, and a
+// challenge may only require skills its topic's lesson (or an earlier one)
+// taught. These helpers render that sequence into prompts — they are the
+// mechanism that stops a topic-1 challenge demanding fmt.Printf when no
+// lesson has covered printing.
+
+// topicSkillsBlock lists topics 1..uptoID with the skills each lesson covers,
+// as a markdown block for prompts. Returns "" when nothing is in range (e.g.
+// uptoID 0 for "before the first topic").
+func topicSkillsBlock(lang Language, uptoID int) string {
+	var sb strings.Builder
+	for _, t := range lang.Topics {
+		if t.ID > uptoID {
+			break
+		}
+		fmt.Fprintf(&sb, "- Topic %d — **%s**: %s\n", t.ID, t.Name, t.Skills)
+	}
+	return sb.String()
+}
+
+// sequenceRule is the covered-skills rule injected into challenge prompts.
+// Beginner→Advanced are strictly bound to what has been taught; GOAT may go
+// beyond the syllabus but must say so up front, so the student knows the
+// extra skills are homework, not something they missed.
+func sequenceRule(diff string) string {
+	if diff == "goat" {
+		return `THE SEQUENCE RULE: lean on the covered skills listed above. You MAY reach
+beyond them for the twist that makes this tier brutal — but if you do, the
+challenge must open (immediately after the Difficulty line) with a short
+"**Beyond the syllabus:**" line naming exactly which not-yet-covered skills it
+uses, so the student knows to research them first.`
+	}
+	return `THE SEQUENCE RULE: the challenge — its requirements, examples, starter code,
+stretch goals, and hints — must be solvable using ONLY the covered skills
+listed above. Do not require, or write feedback-bait around, anything not yet
+covered. If a tempting idea needs an uncovered skill, pick a different idea.`
 }
 
 // ── Language handler ──────────────────────────────────
@@ -211,6 +251,10 @@ func handleLesson(w http.ResponseWriter, r *http.Request, user string) {
 	if !ok {
 		return
 	}
+	topic, ok := lookupTopic(w, lang, req.TopicID)
+	if !ok {
+		return
+	}
 
 	key := fmt.Sprintf("%s:lesson:%d", req.Lang, req.TopicID)
 
@@ -222,7 +266,24 @@ func handleLesson(w http.ResponseWriter, r *http.Request, user string) {
 		}
 	}
 
+	// The teaching sequence: this lesson must deliver its topic's skills (the
+	// contract later challenges rely on) and may assume only earlier topics.
+	prior := topicSkillsBlock(lang, topic.ID-1)
+	if prior == "" {
+		prior = "Nothing — this is the very first topic. Assume no prior " + lang.Name + " knowledge at all."
+	}
+
 	prompt := fmt.Sprintf(`Teach Topic %d of %d: **%s** in %s.
+
+**This lesson MUST cover these skills** — later challenges rely on them having been taught here:
+%s
+
+**What earlier lessons already covered** (safe to use without re-explaining):
+%s
+
+Do not build examples on any concept beyond this topic's skills and the earlier
+topics above. If a small forward reference is truly unavoidable, explain it
+inline in one sentence — never assume it.
 
 Use this structure:
 
@@ -245,7 +306,10 @@ Show a more practical, realistic usage.
 
 ## Summary
 One crisp sentence: the essential takeaway.`,
-		req.TopicID, len(lang.Topics), req.TopicName, lang.Name, lang.Name)
+		topic.ID, len(lang.Topics), topic.Name, lang.Name,
+		topic.Skills,
+		prior,
+		lang.Name)
 
 	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil, func(full string) {
 		cacheStore(user, key, full)
@@ -268,6 +332,11 @@ func handleChallenge(w http.ResponseWriter, r *http.Request, user string) {
 		return
 	}
 
+	topic, ok := lookupTopic(w, lang, req.TopicID)
+	if !ok {
+		return
+	}
+
 	diff := normalizeDifficulty(req.Difficulty)
 	spec := difficultySpec[diff]
 
@@ -282,6 +351,11 @@ func handleChallenge(w http.ResponseWriter, r *http.Request, user string) {
 	}
 
 	prompt := fmt.Sprintf(`Create a practical %s coding challenge for Topic %d: **%s**.
+
+**What the course has covered so far** (this topic's lesson included):
+%s
+
+%s
 
 This is the **%s** tier of four (Beginner → Intermediate → Advanced → GOAT).
 Tier brief: %s
@@ -320,12 +394,14 @@ hidden until the student chooses to reveal it — so never reference the hints
 from any other section.
 
 Use the starter code above as a base, trimming or extending it to match the
-tier brief. Keep it focused purely on %s concepts. Make it engaging with a
-real-world flavor.`,
-		lang.Name, req.TopicID, req.TopicName,
+tier brief. Keep the challenge centred on %s, exercised through the covered
+skills above. Make it engaging with a real-world flavor.`,
+		lang.Name, topic.ID, topic.Name,
+		topicSkillsBlock(lang, topic.ID),
+		sequenceRule(diff),
 		spec.Label, spec.Brief,
 		spec.Label,
-		lang.StarterTemplate, req.TopicName)
+		lang.StarterTemplate, topic.Name)
 
 	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil, func(full string) {
 		cacheStore(user, key, full)
@@ -348,6 +424,10 @@ func handleEvaluate(w http.ResponseWriter, r *http.Request, user string) {
 		return
 	}
 	lang, ok := lookupLang(w, req.Lang)
+	if !ok {
+		return
+	}
+	topic, ok := lookupTopic(w, lang, req.TopicID)
 	if !ok {
 		return
 	}
@@ -382,16 +462,23 @@ or something the lesson teaches — do not flag it as an issue or style problem.
 "in real-world code you'd usually..." aside is fine, but the verdict and Issues section
 must judge the code against the requirements as written.
 
+Judge within the course. The student has covered ONLY these skills so far:
+%s
+Never fail the submission or list an issue for not using techniques beyond them
+(no demanding error handling, methods, or concurrency from a student who hasn't
+met them yet). A one-line "later in the course you'll learn..." aside is fine.
+
 Stretch goals are optional extras: never fail or penalize a submission for skipping
 them. If the student attempted one, evaluate the attempt and celebrate it in
 **What Works Well**.
 
 Be encouraging and educational. Note: code cannot be executed — evaluate on logic and conventions.`,
-		lang.Name, req.TopicID, req.TopicName,
+		lang.Name, topic.ID, topic.Name,
 		req.Challenge,
 		lang.ID, req.Code,
 		lang.Name,
-		lang.Name, lang.StyleNote)
+		lang.Name, lang.StyleNote,
+		topicSkillsBlock(lang, topic.ID))
 	prompt += lessonContextBlock(user, fmt.Sprintf("%s:lesson:%d", req.Lang, req.TopicID))
 	prompt += hintUsageBlock(user, challengeKey)
 
@@ -428,7 +515,8 @@ Challenge:
 Student's current code:
 `+"```%s\n%s\n```"+`
 
-Give ONE specific, encouraging nudge that moves them forward without revealing the answer. Maximum 3 sentences.`,
+Give ONE specific, encouraging nudge that moves them forward without revealing the answer. Maximum 3 sentences.
+Stay within the skills the challenge itself uses — don't hint toward techniques the course hasn't covered yet.`,
 		lang.Name, req.TopicName, req.Challenge, lang.ID, req.Code)
 	prompt += lessonContextBlock(user, fmt.Sprintf("%s:lesson:%d", req.Lang, req.TopicID))
 

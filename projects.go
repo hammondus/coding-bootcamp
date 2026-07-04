@@ -17,6 +17,7 @@ var goProjects = []Project{
 		Icon:        "🔗",
 		Description: "Build a complete URL shortening web service from scratch — an HTTP API with an in-memory store and file persistence.",
 		Goal:        "a URL shortening web service: POST a long URL, get back a short code; visiting the short code redirects to the original URL. State persists across restarts.",
+		Prereqs:     "all Go fundamentals, HTTP track lessons 5-6 (servers and routing), and Standard Library lessons 4-5 (encoding/json, sync)",
 		Milestones: []ProjectMilestone{
 			{1, "HTTP Server Skeleton", "A runnable net/http server with a health-check route and graceful structure to build on"},
 			{2, "In-Memory Store", "A concurrency-safe store mapping short codes to long URLs, guarded by a mutex"},
@@ -31,6 +32,7 @@ var goProjects = []Project{
 		Icon:        "📝",
 		Description: "Build a Markdown-to-HTML converter from scratch — an incremental parser that turns a .md file into a styled HTML page. A natural stepping stone toward a static site generator.",
 		Goal:        "a command-line tool that reads a Markdown file and writes an HTML file: headings, paragraphs, inline formatting, links, lists, and code blocks all converted correctly, using only the Go standard library.",
+		Prereqs:     "all Go fundamentals and Standard Library lessons 1-2 (strings/strconv, io/bufio/os)",
 		Milestones: []ProjectMilestone{
 			{1, "CLI & File I/O", "A command-line program that takes a .md path, reads it, and writes a .html file alongside it"},
 			{2, "Headings & Paragraphs", "Line-by-line block parsing that converts # headings and blank-line-separated paragraphs to HTML, with proper escaping"},
@@ -45,6 +47,7 @@ var goProjects = []Project{
 		Icon:        "💬",
 		Description: "Build a real-time multi-user chat server from scratch — implementing the WebSocket protocol by hand over the standard library, with a concurrency-safe broadcast hub and a vanilla JS frontend.",
 		Goal:        "a real-time chat server where multiple browser clients connect over WebSockets and see each other's messages instantly. The WebSocket handshake and framing are implemented from scratch using only the Go standard library (net/http hijacking, crypto/sha1, encoding/base64); the frontend is vanilla HTML/CSS/JS using the browser's native WebSocket API, written to work against this backend.",
+		Prereqs:     "all Go fundamentals (especially Goroutines & Channels), HTTP track lessons 5-7, and Standard Library lesson 5 (sync); the SHA-1 + base64 handshake is taught inside milestone 2 itself",
 		Milestones: []ProjectMilestone{
 			{1, "HTTP Server & Frontend", "An net/http server that serves a vanilla HTML/CSS/JS chat page using the browser's native WebSocket API"},
 			{2, "WebSocket Handshake", "Upgrading a GET request by hand: validating headers, computing Sec-WebSocket-Accept (SHA-1 + base64), and hijacking the connection"},
@@ -63,6 +66,7 @@ var goProjects = []Project{
 		Icon:        "🎓",
 		Description: "The grand finale: rebuild this very bootcamp from scratch — a Go standard-library backend streaming AI-generated lessons over SSE to a vanilla HTML/CSS/JS frontend, with auth, sessions, per-user caching, progress tracking, and atomic JSON persistence. Built in vertical slices, backend and frontend together.",
 		Goal:        "a complete AI-powered bootcamp web app — the very one you are using right now: a Go standard-library backend with cookie-session auth, mutex-guarded in-memory state, atomic JSON-file persistence, and a per-user lesson cache, streaming AI-generated lessons, challenge evaluations, hints, and chat from the Claude API over SSE to a vanilla HTML/CSS/JS single-page frontend with no build step. Every milestone is a vertical slice: the backend feature and the frontend that exercises it land together, so the app is runnable end-to-end at every step.",
+	Prereqs:     "everything: all Go fundamentals plus the HTTP, Standard Library, and Testing tracks (JS/HTML/CSS fundamentals help for the frontend slices)",
 		Milestones: []ProjectMilestone{
 			{1, "Server Skeleton & App Shell", "A Go net/http server serving a static/ directory (port from an env var), plus the HTML/CSS shell of the single-page app: header, sidebar, and main content panel"},
 			{2, "JSON API & Dynamic Boot", "jsonOK/jsonErr/decodePOST helpers, a /api/languages endpoint fed from an in-code config map, and app.js fetching it on load to render the language picker"},
@@ -99,6 +103,7 @@ var javascriptProjects = []Project{
 		Icon:        "🌙",
 		Description: "Build a canvas remake of the 1982 arcade classic Moon Patrol — an auto-scrolling moon buggy that jumps craters and shoots UFOs, over parallax-scrolling mountains — then add ghost multiplayer: a small Go backend that keeps a leaderboard, replays recorded runs, and relays live players as translucent ghost buggies over WebSockets.",
 		Goal:        "a browser remake of the arcade classic Moon Patrol with ghost multiplayer: a vanilla JavaScript canvas game (no build step, no libraries) where an auto-scrolling moon buggy jumps craters and shoots UFOs with a single fire key that shoots forward and upward at once, across a course with parallax-scrolling background layers — backed by a small Go standard-library server that serves the shared course data, keeps a persistent leaderboard, stores finished runs, and relays live positions over WebSockets so other players appear as translucent, non-interacting ghost buggies. Ghosts never affect your run, so each client owns its own simulation; the only networking trick needed is interpolating ghost positions between updates.",
+		Prereqs:     "all JavaScript fundamentals and all four JavaScript tracks (Canvas & Animation, Game Development, Browser APIs, Real-Time & Networking); milestones 6-8 additionally assume Go fundamentals and the Go HTTP track, because the ghost backend is written in Go",
 		Milestones: []ProjectMilestone{
 			{1, "Canvas, Game Loop & Buggy", "A canvas page with a fixed-timestep requestAnimationFrame loop and the buggy driving on flat lunar ground with keyboard speed control"},
 			{2, "Scrolling Terrain & Parallax", "An auto-scrolling course built from authored segment data — craters and rocks on the surface, mountain and hill layers scrolling at different speeds behind it"},
