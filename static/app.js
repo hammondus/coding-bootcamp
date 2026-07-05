@@ -215,6 +215,8 @@ function showToast(msg, type = 'info') {
 }
 
 // ── Streaming fetch ────────────────────────────
+// onDone(fullText, ok) always fires exactly once; ok is true only when the
+// stream ended with the server's [DONE] marker (a complete, cached response).
 async function streamFetch(url, body, onChunk, onDone) {
   if (S.streaming) return;
   S.streaming = true;
@@ -255,7 +257,10 @@ async function streamFetch(url, body, onChunk, onDone) {
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue;
         const raw = line.slice(6).trim();
-        if (raw === '[DONE]') { S.streaming = false; onDone(accumulated); return; }
+        // The server only sends [DONE] after a verifiably complete stream, so
+        // this is the one exit where onDone's second argument is true. Every
+        // error path below leaves it falsy.
+        if (raw === '[DONE]') { S.streaming = false; onDone(accumulated, true); return; }
         try {
           const parsed = JSON.parse(raw);
           if (parsed.error) {
@@ -665,6 +670,12 @@ function loadLesson(force = false) {
     return;
   }
   const key = activeCacheKey();
+  // lessonCached came from the server when the sidebar was fetched, so it
+  // still says false for a lesson we're about to generate. Grab the live
+  // entry now so the completion callback can flip the flag once the server
+  // has cached the lesson — otherwise loadChallenge's "load the lesson first"
+  // gate keeps firing until the page is refreshed.
+  const entry = S.mode === 'track' ? S.activeTrackLesson : activeTopic();
   $('lesson-empty').classList.add('hidden');
   $('lesson-footer').classList.add('hidden');
   const out = $('lesson-output');
@@ -676,12 +687,15 @@ function loadLesson(force = false) {
     endpoint('lesson'),
     reqBody({ force }),
     (_, acc) => { out.innerHTML = parseMarkdown(acc); },
-    (full) => {
+    (full, ok) => {
       out.classList.remove('streaming');
       out.innerHTML = parseMarkdown(full);
       applyHighlight(out);
       $('lesson-footer').classList.remove('hidden');
       S.lessons[key] = out.innerHTML;
+      // ok means the stream finished cleanly, so the server has cached this
+      // lesson; an errored stream leaves the flag alone.
+      if (ok && entry) entry.lessonCached = true;
     }
   );
 }
