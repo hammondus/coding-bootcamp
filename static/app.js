@@ -433,6 +433,68 @@ async function switchLang(id, reset = true) {
   }
 }
 
+// ── Model picker ───────────────────────────────
+// One globally-selected model per user drives all generated content. The
+// server only lists models whose provider has an API key configured, so the
+// dropdown is hidden when there's nothing to choose between.
+async function loadModels() {
+  try {
+    const resp = await fetch('/api/models');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    S.models = data.models;
+    S.model  = data.selected;
+    const sel = $('model-select');
+    sel.innerHTML = '';
+    data.models.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.name;
+      sel.appendChild(opt);
+    });
+    sel.value = data.selected;
+    sel.classList.toggle('hidden', data.models.length <= 1);
+  } catch (_) { /* dropdown just stays empty/hidden */ }
+}
+
+async function changeModel(id) {
+  const prev = S.model;
+  try {
+    const resp = await fetch('/api/model', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: id }),
+    });
+    if (!resp.ok) throw new Error('rejected');
+    S.model = id;
+  } catch (_) {
+    showToast('Could not switch model', 'error');
+    if (prev) $('model-select').value = prev;
+    return;
+  }
+
+  // Generated content is cached per model, so what's on screen may no longer
+  // match the selection. Drop the JS content caches and reload — the same
+  // clean-slate treatment switching language gets. Editor drafts survive:
+  // the student's own code isn't model-specific.
+  S.lessons      = {};
+  S.challenges   = {};
+  S.challengeRaw = {};
+  S.chatHistory  = {};
+  await Promise.all([loadTopics(), loadTracks(), loadProjects()]);
+  if (S.mode === 'fundamentals') {
+    selectTopic(S.activeId, true);
+  } else if (S.mode === 'track' && S.activeTrackId && S.activeTrackLesson) {
+    selectTrackLesson(S.activeTrackId, S.activeTrackLesson.id);
+  } else if (S.mode === 'project' && S.activeProjectId && S.activeProjectMilestone) {
+    selectProjectMilestone(S.activeProjectId, S.activeProjectMilestone.id);
+  }
+  // setup mode needs nothing: the guide is hand-written, not generated.
+
+  const name = S.models?.find(m => m.id === id)?.name || id;
+  showToast(`Now generating with ${name}`, 'success');
+}
+
 // ── Progress bar ───────────────────────────────
 function updateProgress() {
   const done  = S.topics.filter(t => t.completed).length;
@@ -1520,6 +1582,10 @@ async function postAuthInit() {
   S.chatHistory  = {};
 
   $('username-display').textContent = S.user;
+
+  // The model choice is per-user, so it can only load after login — and it
+  // must load before topics, because cached-content flags depend on it.
+  await loadModels();
 
   const defaultLang = S.langs[0]?.id || 'go';
   await switchLang(defaultLang, false); // loads topics + tracks

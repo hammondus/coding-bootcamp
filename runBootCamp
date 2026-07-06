@@ -1,6 +1,11 @@
 #!/bin/bash
-# Run the bootcamp server. The API key lives in claude.key (gitignored),
-# which holds just the bare key on one line.
+# Run the bootcamp server. API keys live in gitignored key files, one per
+# provider, each holding just the bare key on one line. claude.key is
+# required; other providers are optional — without a key file, that
+# provider's models simply don't appear in the model dropdown.
 cd "$(dirname "$0")"   # so this works when run from any directory
 export ANTHROPIC_API_KEY=$(cat claude.key)
+if [ -f deepseek.key ]; then
+  export DEEPSEEK_API_KEY=$(cat deepseek.key)
+fi
 go run . "$@"

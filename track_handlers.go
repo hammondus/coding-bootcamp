@@ -191,7 +191,7 @@ One sentence: what the student can now do that they couldn't before this lesson.
 		continuity,
 	)
 
-	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil, func(full string) {
+	streamLLM(r.Context(), w, user, lang.SystemPrompt, prompt, nil, func(full string) {
 		cacheStore(user, cacheKey, full)
 	})
 }
@@ -308,7 +308,7 @@ anything it didn't teach.`,
 	)
 	prompt += lessonContextBlock(user, lessonKey)
 
-	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil, func(full string) {
+	streamLLM(r.Context(), w, user, lang.SystemPrompt, prompt, nil, func(full string) {
 		cacheStore(user, cacheKey, full)
 		// A fresh challenge starts with a clean hint record — hint use on the
 		// old challenge shouldn't count against the new one.
@@ -390,7 +390,7 @@ Be encouraging. Note: code cannot be executed — evaluate on logic and conventi
 	// Save the submission and its feedback so the student can come back to
 	// them later. onComplete only fires on a clean finish, so a truncated
 	// evaluation is never saved.
-	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil, func(full string) {
+	streamLLM(r.Context(), w, user, lang.SystemPrompt, prompt, nil, func(full string) {
 		storeSolution(user, challengeKey, req.Code, full)
 	})
 }
@@ -434,7 +434,7 @@ Stay within the skills the challenge itself uses — don't hint toward technique
 	// Record hint use only when the hint was actually delivered (onComplete
 	// fires on a clean finish) — a failed request shouldn't count against the
 	// student's no-hints run. The evaluation reads this flag.
-	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil, func(string) {
+	streamLLM(r.Context(), w, user, lang.SystemPrompt, prompt, nil, func(string) {
 		markHintsUsed(user, trackChallengeCacheKey(req.Lang, req.TrackID, req.LessonID, normalizeDifficulty(req.Difficulty)))
 	})
 }
@@ -497,7 +497,7 @@ Answer their questions clearly and in the context of this specific lesson and tr
 
 	// Save the conversation so it survives a reload. The history the client
 	// sends already includes the newest question; add the answer on top.
-	streamFromAnthropic(r.Context(), w, system, "", req.Messages, func(full string) {
+	streamLLM(r.Context(), w, user, system, "", req.Messages, func(full string) {
 		storeChat(user, trackChatStoreKey(req.Lang, req.TrackID, req.LessonID),
 			append(req.Messages, Message{Role: "assistant", Content: full}))
 	})

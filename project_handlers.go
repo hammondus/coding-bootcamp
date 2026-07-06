@@ -215,7 +215,7 @@ Be encouraging. Frame it as "from scratch, bringing together everything you've l
 		lang.Name,
 	)
 
-	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil, func(full string) {
+	streamLLM(r.Context(), w, user, lang.SystemPrompt, prompt, nil, func(full string) {
 		cacheStore(user, cacheKey, full)
 	})
 }
@@ -280,7 +280,7 @@ Be encouraging and concrete.`,
 	)
 	prompt += projectBriefBlock(user, fmt.Sprintf("%s:project:%s:brief", req.Lang, req.ProjectID))
 
-	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil, func(full string) {
+	streamLLM(r.Context(), w, user, lang.SystemPrompt, prompt, nil, func(full string) {
 		cacheStore(user, cacheKey, full)
 	})
 }
@@ -351,7 +351,7 @@ Be encouraging. Note: code cannot be executed — evaluate on logic and conventi
 	// them later. onComplete only fires on a clean finish, so a truncated
 	// evaluation is never saved.
 	solutionKey := fmt.Sprintf("%s:project:%s:milestone:%d", req.Lang, req.ProjectID, req.MilestoneID)
-	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil, func(full string) {
+	streamLLM(r.Context(), w, user, lang.SystemPrompt, prompt, nil, func(full string) {
 		storeSolution(user, solutionKey, req.Code, full)
 	})
 }
@@ -390,7 +390,7 @@ Give ONE specific, encouraging nudge that moves them forward without revealing t
 	)
 	prompt += projectBriefBlock(user, fmt.Sprintf("%s:project:%s:brief", req.Lang, req.ProjectID))
 
-	streamFromAnthropic(r.Context(), w, lang.SystemPrompt, prompt, nil)
+	streamLLM(r.Context(), w, user, lang.SystemPrompt, prompt, nil)
 }
 
 func handleProjectChat(w http.ResponseWriter, r *http.Request, user string) {
@@ -427,7 +427,7 @@ Answer their questions clearly and in the context of this project and milestone.
 
 	// Save the conversation so it survives a reload. The history the client
 	// sends already includes the newest question; add the answer on top.
-	streamFromAnthropic(r.Context(), w, system, "", req.Messages, func(full string) {
+	streamLLM(r.Context(), w, user, system, "", req.Messages, func(full string) {
 		storeChat(user, projectChatStoreKey(req.Lang, req.ProjectID, req.MilestoneID),
 			append(req.Messages, Message{Role: "assistant", Content: full}))
 	})

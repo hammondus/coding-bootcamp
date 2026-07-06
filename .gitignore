@@ -1,6 +1,7 @@
 .DS_Store
 /data
-/*claude.key
+/claude.key
+/deepseek.key
 CLAUDE.md
 .claude/settings.local.json
 bootcamp

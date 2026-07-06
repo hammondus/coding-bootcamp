@@ -27,6 +27,7 @@ func main() {
 	loadLessonCache()
 	loadHintsUsed()
 	loadWorkspaces()
+	loadUserModels()
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -59,6 +60,10 @@ func main() {
 	http.HandleFunc("/api/hints-viewed", requireAuth(handleHintsViewed))
 	http.HandleFunc("/api/chat", requireAuth(handleChat))
 	http.HandleFunc("/api/workspace", requireAuth(handleWorkspace))
+
+	// Model picker (models.go / settings.go) — which LLM generates content
+	http.HandleFunc("/api/models", requireAuth(handleModels))
+	http.HandleFunc("/api/model", requireAuth(handleSetModel))
 
 	// Getting Started guide — hand-written markdown, not generated (setup.go)
 	http.HandleFunc("/api/setup", requireAuth(handleSetup))

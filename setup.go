@@ -77,7 +77,7 @@ every alternative; beginners want a path, not a survey.%s`,
 
 	// Save the conversation so it survives a reload, keyed separately from any
 	// topic's chat (see setupChatStoreKey in workspace.go).
-	streamFromAnthropic(r.Context(), w, system, "", req.Messages, func(full string) {
+	streamLLM(r.Context(), w, user, system, "", req.Messages, func(full string) {
 		storeChat(user, setupChatStoreKey(req.Lang),
 			append(req.Messages, Message{Role: "assistant", Content: full}))
 	})

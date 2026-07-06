@@ -17,25 +17,18 @@ import (
 )
 
 const (
-	anthropicAPI = "https://api.anthropic.com/v1/messages"
-	// model        = "claude-sonnet-4-6"
-	model      = "claude-opus-4-8"
 	maxRetries = 3
-	// maxTokens needs headroom: a full lesson (overview, 5–7 concepts, two code
-	// examples, pitfalls) regularly runs past small caps, and a capped response
-	// is a silently truncated lesson.
-	maxTokens = 8192
 	// streamTimeout caps one whole streaming call, retries included. The
 	// client's ResponseHeaderTimeout only guards the wait for the *first* byte;
 	// this guards against an upstream that stalls midway through the body.
 	streamTimeout = 5 * time.Minute
 )
 
-// anthropicClient is a shared HTTP client configured for the Anthropic
-// streaming API. No overall Timeout is set because a streaming response is
-// unbounded in duration; ResponseHeaderTimeout guards against a stalled
-// upstream that never sends the first byte.
-var anthropicClient = &http.Client{
+// llmClient is a shared HTTP client configured for streaming LLM APIs. No
+// overall Timeout is set because a streaming response is unbounded in
+// duration; ResponseHeaderTimeout guards against a stalled upstream that
+// never sends the first byte.
+var llmClient = &http.Client{
 	Transport: &http.Transport{
 		DialContext: (&net.Dialer{
 			Timeout:   30 * time.Second,
@@ -46,23 +39,29 @@ var anthropicClient = &http.Client{
 	},
 }
 
-// Message is one turn in a conversation sent to the Anthropic API.
+// Message is one turn in a conversation sent to the LLM API. Both provider
+// wire formats use the same role/content shape.
 type Message struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
-// streamFromAnthropic calls the Anthropic streaming API and forwards SSE chunks
-// to the client.
+// streamLLM calls the user's currently selected model (see currentModel in
+// settings.go) and forwards SSE text chunks to the browser. It speaks two
+// wire formats: the Anthropic Messages API and OpenAI-compatible chat
+// completions (DeepSeek) — see models.go for which provider uses which.
 //
 // ctx should be the request context (r.Context()) so that a client disconnect
 // cancels the upstream call instead of streaming on and burning tokens.
 //
 // onComplete(fullText) is optional and used to populate the lesson cache. It
 // only fires when the stream finishes cleanly (context not cancelled, no read
-// error), so a disconnect mid-stream never caches a truncated lesson.
-func streamFromAnthropic(ctx context.Context, w http.ResponseWriter, system, prompt string, messages []Message, onComplete ...func(string)) {
-	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+// error, upstream sent its terminal marker, reply not truncated or refused),
+// so a disconnect mid-stream never caches a partial lesson.
+func streamLLM(ctx context.Context, w http.ResponseWriter, user, system, prompt string, messages []Message, onComplete ...func(string)) {
+	model := currentModel(user)
+	prov := providers[model.Provider]
+	apiKey := os.Getenv(prov.KeyEnv)
 
 	// Overall deadline so a stalled upstream can never hang a request forever.
 	// Cancelling also releases the upstream connection when we return early.
@@ -82,14 +81,14 @@ func streamFromAnthropic(ctx context.Context, w http.ResponseWriter, system, pro
 		// Log server-side too: otherwise failures like a missing API key are
 		// only visible as an SSE event in the browser and leave the console
 		// silent, which makes them hard to diagnose.
-		log.Printf("stream error: %s", msg)
+		log.Printf("stream error (%s): %s", model.ID, msg)
 		data, _ := json.Marshal(map[string]string{"error": msg})
 		fmt.Fprintf(w, "data: %s\n\n", data)
 		flusher.Flush()
 	}
 
 	if apiKey == "" {
-		sendErr("ANTHROPIC_API_KEY is not set. Export it and restart the server.")
+		sendErr(prov.KeyEnv + " is not set. Export it and restart the server.")
 		return
 	}
 
@@ -98,13 +97,46 @@ func streamFromAnthropic(ctx context.Context, w http.ResponseWriter, system, pro
 		msgs = []Message{{Role: "user", Content: prompt}}
 	}
 
-	reqBody, _ := json.Marshal(map[string]interface{}{
-		"model":      model,
-		"max_tokens": maxTokens,
-		"system":     system,
-		"messages":   msgs,
-		"stream":     true,
-	})
+	// Build the provider-specific request. The two APIs want the same
+	// information in slightly different shapes.
+	headers := map[string]string{"Content-Type": "application/json"}
+	var reqBody []byte
+	switch prov.Style {
+	case styleAnthropic:
+		body := map[string]interface{}{
+			"model":      model.ID,
+			"max_tokens": prov.MaxTokens,
+			"system":     system,
+			"messages":   msgs,
+			"stream":     true,
+		}
+		// Fable's safety classifiers can decline a request outright
+		// (stop_reason "refusal") — even for harmless lesson content, false
+		// positives happen. Opting into a server-side fallback lets Opus
+		// answer within the same call instead of failing the stream.
+		if model.ID == "claude-fable-5" {
+			body["fallbacks"] = []map[string]string{{"model": "claude-opus-4-8"}}
+			headers["anthropic-beta"] = "server-side-fallback-2026-06-01"
+		}
+		reqBody, _ = json.Marshal(body)
+		headers["x-api-key"] = apiKey
+		headers["anthropic-version"] = "2023-06-01"
+	case styleOpenAI:
+		// OpenAI-compatible APIs put the system prompt in the message list
+		// rather than a separate field.
+		oaMsgs := make([]Message, 0, len(msgs)+1)
+		if system != "" {
+			oaMsgs = append(oaMsgs, Message{Role: "system", Content: system})
+		}
+		oaMsgs = append(oaMsgs, msgs...)
+		reqBody, _ = json.Marshal(map[string]interface{}{
+			"model":      model.ID,
+			"max_tokens": prov.MaxTokens,
+			"messages":   oaMsgs,
+			"stream":     true,
+		})
+		headers["Authorization"] = "Bearer " + apiKey
+	}
 
 	// Retry on rate-limit (429), overload (529), and transient server errors
 	// (5xx) with exponential back-off. The request body must be rebuilt each
@@ -116,7 +148,7 @@ func streamFromAnthropic(ctx context.Context, w http.ResponseWriter, system, pro
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
 			delay := time.Duration(1<<uint(attempt-1)) * time.Second // 1 s, 2 s, 4 s
-			log.Printf("Anthropic API retry %d/%d after %v (last status %d)", attempt, maxRetries, delay, lastStatus)
+			log.Printf("%s API retry %d/%d after %v (last status %d)", prov.ID, attempt, maxRetries, delay, lastStatus)
 			select {
 			case <-time.After(delay):
 			case <-ctx.Done():
@@ -124,21 +156,21 @@ func streamFromAnthropic(ctx context.Context, w http.ResponseWriter, system, pro
 			}
 		}
 
-		req, err := http.NewRequestWithContext(ctx, "POST", anthropicAPI, bytes.NewBuffer(reqBody))
+		req, err := http.NewRequestWithContext(ctx, "POST", prov.URL, bytes.NewBuffer(reqBody))
 		if err != nil {
 			sendErr("Could not build request: " + err.Error())
 			return
 		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("x-api-key", apiKey)
-		req.Header.Set("anthropic-version", "2023-06-01")
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
 
-		resp, err = anthropicClient.Do(req)
+		resp, err = llmClient.Do(req)
 		if err != nil {
 			if errors.Is(ctx.Err(), context.Canceled) {
 				return // client disconnected; nothing to report
 			}
-			sendErr("Could not reach Anthropic API: " + err.Error())
+			sendErr("Could not reach " + prov.ID + " API: " + err.Error())
 			return
 		}
 
@@ -149,7 +181,7 @@ func streamFromAnthropic(ctx context.Context, w http.ResponseWriter, system, pro
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		lastStatus = resp.StatusCode
-		log.Printf("Anthropic API attempt %d/%d: status %d: %s", attempt+1, maxRetries+1, lastStatus, string(body))
+		log.Printf("%s API attempt %d/%d: status %d: %s", prov.ID, attempt+1, maxRetries+1, lastStatus, string(body))
 
 		if lastStatus == 429 || lastStatus == 529 || lastStatus >= 500 {
 			resp = nil
@@ -167,12 +199,18 @@ func streamFromAnthropic(ctx context.Context, w http.ResponseWriter, system, pro
 	defer resp.Body.Close()
 
 	var (
-		buf            strings.Builder // accumulate for the optional onComplete callback
-		sawMessageStop bool            // upstream sent its terminal event — the response is whole
-		stopReason     string          // from message_delta: "end_turn", "max_tokens", ...
+		buf        strings.Builder // accumulate for the optional onComplete callback
+		sawEnd     bool            // upstream sent its terminal marker — the response is whole
+		stopReason string          // "end_turn", "max_tokens", "refusal" / "stop", "length"
 	)
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // tolerate long SSE lines
+	forward := func(text string) {
+		buf.WriteString(text)
+		chunk, _ := json.Marshal(map[string]string{"text": text})
+		fmt.Fprintf(w, "data: %s\n\n", chunk)
+		flusher.Flush()
+	}
 stream:
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -181,13 +219,45 @@ stream:
 		}
 		data := strings.TrimPrefix(line, "data: ")
 		if data == "[DONE]" {
-			sawMessageStop = true
+			// OpenAI-style terminal marker (Anthropic's is the message_stop
+			// event below).
+			sawEnd = true
 			break stream
 		}
 		var event map[string]interface{}
 		if err := json.Unmarshal([]byte(data), &event); err != nil {
 			continue
 		}
+
+		if prov.Style == styleOpenAI {
+			// Chunk shape: {"choices":[{"delta":{"content":"…"},"finish_reason":…}]}
+			// A mid-stream failure arrives as {"error":{…}} instead.
+			if e, ok := event["error"].(map[string]interface{}); ok {
+				msg, _ := e["message"].(string)
+				if msg == "" {
+					msg = "unknown upstream error"
+				}
+				sendErr(prov.ID + " API error: " + msg)
+				return
+			}
+			choices, _ := event["choices"].([]interface{})
+			if len(choices) == 0 {
+				continue
+			}
+			choice, _ := choices[0].(map[string]interface{})
+			if fr, ok := choice["finish_reason"].(string); ok && fr != "" {
+				stopReason = fr // "stop", or "length" when cut off by max_tokens
+			}
+			// deepseek-reasoner streams its chain of thought as a separate
+			// "reasoning_content" delta first; only the answer ("content") is
+			// forwarded to the browser.
+			delta, _ := choice["delta"].(map[string]interface{})
+			if text, _ := delta["content"].(string); text != "" {
+				forward(text)
+			}
+			continue
+		}
+
 		switch event["type"] {
 		case "error":
 			// The API can also fail mid-stream (e.g. overloaded_error) as an
@@ -211,7 +281,7 @@ stream:
 			}
 		case "message_stop":
 			// Anthropic's terminal event — the stream is done.
-			sawMessageStop = true
+			sawEnd = true
 			break stream
 		case "content_block_delta":
 			delta, _ := event["delta"].(map[string]interface{})
@@ -219,10 +289,7 @@ stream:
 				continue
 			}
 			text, _ := delta["text"].(string)
-			buf.WriteString(text)
-			chunk, _ := json.Marshal(map[string]string{"text": text})
-			fmt.Fprintf(w, "data: %s\n\n", chunk)
-			flusher.Flush()
+			forward(text)
 		}
 	}
 
@@ -244,20 +311,28 @@ stream:
 	}
 
 	// A premature EOF is not a scanner error, so reaching here without the
-	// terminal event means the upstream dropped the connection mid-response.
+	// terminal marker means the upstream dropped the connection mid-response.
 	// Report it rather than passing truncated text off as a finished lesson.
-	if !sawMessageStop {
+	if !sawEnd {
 		sendErr("Stream ended unexpectedly — try again.")
+		return
+	}
+
+	// The model (or its safety layer) declined to answer. Whatever partial
+	// text arrived must not be cached or passed off as a finished response.
+	if stopReason == "refusal" {
+		sendErr("The model declined this request — try regenerating, or switch models.")
 		return
 	}
 
 	fmt.Fprintf(w, "data: [DONE]\n\n")
 	flusher.Flush()
 
-	// Only a verifiably complete response goes in the cache: message_stop was
-	// seen (checked above) and the model wasn't cut off by the max_tokens cap.
-	if stopReason == "max_tokens" {
-		log.Printf("stream hit the max_tokens cap (%d) — truncated response not cached", maxTokens)
+	// Only a verifiably complete response goes in the cache: the terminal
+	// marker was seen (checked above) and the model wasn't cut off by the
+	// max_tokens cap ("length" is the OpenAI-style spelling of the same).
+	if stopReason == "max_tokens" || stopReason == "length" {
+		log.Printf("stream hit the %d-token cap — truncated response not cached", prov.MaxTokens)
 		return
 	}
 	if len(onComplete) > 0 && onComplete[0] != nil && buf.Len() > 0 {

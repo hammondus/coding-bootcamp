@@ -107,6 +107,12 @@
       </div>
 
       <div class="header-right">
+        <!-- Model picker — which AI model generates content. Populated by JS
+             from /api/models; only providers with an API key are listed. -->
+        <select id="model-select" class="model-select"
+                title="AI model used to generate lessons and challenges"
+                onchange="changeModel(this.value)"></select>
+
         <!-- User chip -->
         <div class="user-chip">
           <span id="username-display" class="username-display"></span>
