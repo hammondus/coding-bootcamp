@@ -37,3 +37,5 @@ This content is cached, so it will survive a server restart.
 This is not suitable for public access. While there is a user logon screen, there are no limits on who can sign up and how much they can use the system, so someone could use up an unlimited amount of API data.
 
 This is really only designed to run locally where you can control or trust who has access and how much they will use it.
+
+<img width="1245" height="1327" alt="Screenshot 2026-07-06 at 2 17 05 pm" src="https://github.com/user-attachments/assets/215888ca-6d01-4361-8c30-8d3b928f8845" />
