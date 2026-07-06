@@ -1358,6 +1358,7 @@ function renderTrackList() {
         <span class="track-progress">${done}/${track.lessons.length}</span>
         <span class="track-chevron">▶</span>
       </button>
+      ${track.description ? `<p class="track-desc">${track.description}</p>` : ''}
       <ul class="track-lessons" id="tl-${track.id}"></ul>`;
     const ul = item.querySelector('.track-lessons');
     track.lessons.forEach(lesson => {
@@ -1466,6 +1467,7 @@ function renderProjectList() {
         <span class="track-progress">${done}/${project.milestones.length}</span>
         <span class="track-chevron">▶</span>
       </button>
+      ${project.description ? `<p class="track-desc">${project.description}</p>` : ''}
       <ul class="track-lessons" id="pl-${project.id}"></ul>`;
     const ul = item.querySelector('.track-lessons');
 

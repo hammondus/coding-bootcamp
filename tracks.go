@@ -39,6 +39,32 @@ var goTracks = []Track{
 		},
 	},
 	{
+		// htmx sits directly after the HTTP track because every lesson writes Go
+		// handlers. Lesson order: html/template must come first (fragments are
+		// the response format for everything after), targeting/swapping before
+		// triggers (trigger examples are meaningless until the student controls
+		// where responses land), and Search & Tables introduces no new
+		// attributes — it deliberately consolidates lessons 3-5 in combination.
+		ID:    "htmx",
+		Title: "Web Apps with htmx",
+		Icon:  "🔁",
+		Description: "Build dynamic, server-rendered web apps in Go with htmx — no JavaScript framework, no build step. " +
+			"Complete the Go fundamentals, the HTTP track, and the HTML fundamentals (Frontend section) first: this track builds on all three and won't re-teach those basics.",
+		Prereqs: "the HTTP track, lessons 5-7 (every lesson here writes Go handlers, routing, and middleware), and the HTML fundamentals course from the Frontend section, especially Document Structure and Forms & Inputs (htmx enhances plain HTML forms and links, and these lessons never re-teach them). Basic CSS helps but is not required. html/template is taught in lesson 1 — assume no prior template experience",
+		Lessons: []TrackLesson{
+			{1, "Hypermedia & html/template", "The HTML-over-the-wire philosophy vs JSON APIs, rendering pages and reusable fragments with html/template, and how contextual auto-escaping keeps output safe"},
+			{2, "First htmx Requests", "Adding htmx with one script tag, hx-get and hx-post on buttons and links, and Go handlers that return HTML fragments instead of JSON"},
+			{3, "Targeting & Swapping", "hx-target with CSS selectors, hx-swap strategies (innerHTML, outerHTML, beforeend, delete), and structuring Go templates as swappable fragments"},
+			{4, "Triggers & Polling", "hx-trigger beyond the defaults: event names, modifiers (once, changed, delay, throttle), load and revealed, and polling with every"},
+			{5, "Forms & Validation", "Submitting forms with hx-post, reading fields with r.FormValue, validating on the server, and re-rendering the form fragment with inline error messages"},
+			{6, "Search & Table Patterns", "Combining triggers, targets, and forms: active search with a debounced trigger, sortable and filterable tables, and infinite scroll with revealed"},
+			{7, "Loading States & UX", "hx-indicator and the htmx-request class, disabling controls with hx-disabled-elt, confirming destructive actions with hx-confirm"},
+			{8, "Out-of-Band Swaps & Headers", "Updating multiple page regions from one response with hx-swap-oob, detecting htmx with the HX-Request header, and driving the client with HX-Redirect and HX-Trigger response headers"},
+			{9, "URLs, History & Boosting", "hx-push-url and back-button behavior, upgrading plain links and forms with hx-boost, and serving a full page or a fragment from the same Go handler"},
+			{10, "Project: Server-Rendered Task Manager", "A complete Go + htmx CRUD app: task list with active search, inline editing, out-of-band counter updates, and working browser history"},
+		},
+	},
+	{
 		ID:          "project-structure",
 		Title:       "Project Structure",
 		Icon:        "📁",
