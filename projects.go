@@ -116,3 +116,47 @@ var javascriptProjects = []Project{
 		},
 	},
 }
+
+// ── Claude projects ───────────────────────────────────
+
+var claudeProjects = []Project{
+	{
+		// Deliverables here are configuration and prompts, not program code —
+		// each milestone is still submitted and evaluated as text, and the
+		// student proves it works by running it against their own repository.
+		ID:          "supercharged-repo",
+		Title:       "Supercharge a Repository",
+		Icon:        "⚡",
+		Description: "Take a real repository from zero Claude setup to a complete, team-ready AI workflow: project memory, permissions, custom commands, guardrail hooks, a reviewer subagent, and a headless CI check.",
+		Goal:        "a repository where Claude Code is a productive, safe team tool out of the box: a CLAUDE.md that changes behavior, permissions that stop the prompt-fatigue, commands for the repo's routine tasks, hooks that enforce its rules, a code-review subagent, and a CI job that runs Claude headlessly — all checked in, so a new teammate gets the whole setup on clone.",
+		Prereqs:     "the Claude fundamentals course plus the Agentic Workflows and Extending Claude Code tracks; you also need a real repository of your own to apply each milestone to",
+		Milestones: []ProjectMilestone{
+			{1, "Audit & CLAUDE.md", "An audit of the repo's conventions, commands, and gotchas, distilled into a CLAUDE.md that measurably changes how Claude works in it"},
+			{2, "Permissions & Settings", "A checked-in settings file with allow/deny rules tuned to the repo, so routine work runs without prompts and dangerous operations still ask"},
+			{3, "Custom Commands", "Slash commands for the repo's three most repeated workflows (e.g. run-and-fix tests, draft a changelog entry, scaffold a component), each taking arguments"},
+			{4, "Guardrail Hooks", "Hooks that enforce rules prompts can't guarantee: auto-format after edits, block edits to protected paths, and require a passing build before any commit"},
+			{5, "Reviewer Subagent", "A code-review agent with a written rubric drawn from the repo's real conventions, restricted to read-only tools, invocable on demand"},
+			{6, "Headless CI Check", "A CI job that runs the reviewer headlessly against each change and posts its findings as a report, with permissions locked down for unattended use"},
+		},
+	},
+	{
+		// The inverse of using Claude Code: building one. Milestones order the
+		// risk — read-only tools come before file edits and command execution,
+		// so the student adds the confirmation step before the agent can do
+		// damage.
+		ID:          "build-an-agent",
+		Title:       "Build Your Own Agent",
+		Icon:        "🦾",
+		Description: "Build a miniature Claude Code from scratch in Go: a terminal agent that streams responses, holds a conversation, and uses tools to read files, edit them, and run commands — with a human confirmation step where it counts.",
+		Goal:        "a command-line coding agent in Go, using only the standard library: it talks to the Messages API, streams replies to the terminal, keeps multi-turn context, and works in an agent loop with tools to list and read files, edit them, and run shell commands — destructive actions gated behind a y/N confirmation, with timeouts, retries, and clean cancellation throughout.",
+		Prereqs:     "all Go fundamentals, the Go HTTP track lessons 1-4, and The Claude API in Go track (the agent loop and tool use are taught there; this project turns them into a real program)",
+		Milestones: []ProjectMilestone{
+			{1, "CLI & First Message", "A Go program that reads a prompt from its arguments, calls the Messages API with an API key from the environment, and prints the reply"},
+			{2, "Streaming to the Terminal", "Replacing the blocking call with stream: true — parsing SSE events and printing text deltas as they arrive, finishing cleanly on message_stop"},
+			{3, "The Conversation Loop", "A read-eval-print loop holding the messages array as state, so follow-up questions build on earlier turns, with Ctrl-C cancelling a stream without killing the session"},
+			{4, "Read-Only Tools", "The agent loop: list_files and read_file tools defined with JSON schemas, executing tool_use requests and returning results until the model answers in text"},
+			{5, "Edits & Commands, Confirmed", "edit_file and run_command tools gated behind a y/N terminal confirmation showing exactly what will change or run — the agent can now do real work, safely"},
+			{6, "Hardening", "Per-call timeouts, bounded retry with backoff on 429/529/5xx, a token budget that stops runaway loops, and a transcript log of every tool call for review"},
+		},
+	},
+}

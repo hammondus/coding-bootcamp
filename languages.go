@@ -90,6 +90,7 @@ type Category struct {
 var categories = []Category{
 	{ID: "backend", Name: "Backend", Langs: []string{"go", "zig"}},
 	{ID: "frontend", Name: "Frontend", Langs: []string{"javascript", "html", "css"}},
+	{ID: "ai", Name: "AI Development", Langs: []string{"claude"}},
 }
 
 var languages = map[string]Language{
@@ -98,6 +99,7 @@ var languages = map[string]Language{
 	"javascript": javascriptLanguage,
 	"html":       htmlLanguage,
 	"css":        cssLanguage,
+	"claude":     claudeLanguage,
 }
 
 // ── Go ────────────────────────────────────────────────
@@ -370,4 +372,62 @@ Style reminder: prefer class selectors over IDs for styling, keep specificity lo
 		{ID: 13, Name: "Responsive Design",
 			Skills: "media queries, mobile-first workflow, relative units in practice, responsive images, clamp() and fluid type"},
 	},
+}
+
+// ── Claude & Claude Code ──────────────────────────────
+
+var claudeLanguage = Language{
+	ID:          "claude",
+	Name:        "Claude",
+	Icon:        "/static/icons/claude.svg",
+	Cmd:         "$ claude",
+	AccentColor: "#D97757",
+	AccentDark:  "#B05730",
+	AccentGlow:  "rgba(217,119,87,0.15)",
+	CodeLabel:   "PROMPT",
+	StyleNote:   "One targeted tip on prompt craft: specificity, providing context and done criteria, structuring with sections or examples, or verifying output before trusting it.",
+	StarterTemplate: "```markdown\n<!-- Your prompt, CLAUDE.md, or configuration here -->\n```",
+	SystemPrompt: `You are an expert instructor teaching AI-assisted software development with Claude and Claude Code, running a hands-on bootcamp.
+You teach clearly, practically, and engagingly. You are patient and encouraging.
+Format all responses in Markdown. Fence every example: markdown fences for prompts and CLAUDE.md files, json fences for settings and API payloads, bash fences for terminal commands.
+Be concise but thorough. Include practical, real-world examples.
+This course teaches a craft, not a programming language: student submissions are prompts, configuration files, and written workflows. Evaluate them on clarity, specificity, and whether they would actually steer Claude well — there is no compiler here, so your judgment is the feedback loop.
+Claude Code evolves quickly. Teach durable concepts and workflows; where an exact flag, file path, or menu name may have changed since your knowledge was current, say so and point the student to /help and the official docs rather than guessing.`,
+	// The sequence runs tool-free first (how models work, prompting) so topic 3
+	// onward can assume prompt craft inside Claude Code. Context (4) precedes
+	// task-writing (5) because scoping a task well requires knowing what Claude
+	// can see. Reviewing output (6) lands before any automation topic — the
+	// habit of verifying must exist before hooks and headless runs remove the
+	// human from the loop. The API closes the course as the bridge to the
+	// advanced tracks.
+	Topics: []Topic{
+		{ID: 1, Name: "How Claude Works",
+			Skills: "what an LLM is in practice: tokens, the context window, training cutoff; why phrasing changes results; model tiers (Opus, Sonnet, Haiku) and the capability/speed/cost trade-off; what models can't do: no memory between conversations, confident-sounding mistakes (hallucination)"},
+		{ID: 2, Name: "Prompting Fundamentals",
+			Skills: "being specific and complete in one message, providing context the model can't guess, stating constraints and the desired output format, showing an example of what good looks like, iterating on a prompt instead of abandoning it"},
+		{ID: 3, Name: "Claude Code First Steps",
+			Skills: "starting a session with claude, giving a first task, how Claude Code reads files / edits / runs commands on its own, responding to permission prompts, /help and /clear, resuming a previous session"},
+		{ID: 4, Name: "Context: What Claude Sees",
+			Skills: "what is actually in context (the conversation, files it read, command output) and what is not, pointing Claude at the right files instead of hoping, when to /clear or start a fresh session, why very long sessions degrade and what to do about it"},
+		{ID: 5, Name: "Effective Task Requests",
+			Skills: "scoping a task to one reviewable change, stating goal + constraints + done criteria, giving the why behind a request, choosing small steps over big-bang asks, steering with follow-ups instead of restarting"},
+		{ID: 6, Name: "Reviewing & Verifying Output",
+			Skills: "reading a diff before accepting it, using tests and builds as the arbiter of done, spotting plausible-but-wrong code, asking Claude to explain or justify a change, pushing back and course-correcting when it goes off track"},
+		{ID: 7, Name: "CLAUDE.md & Project Memory",
+			Skills: "what CLAUDE.md is and when Claude reads it, writing rules that actually change behavior (concrete and imperative, not vague), project conventions vs one-off task instructions, keeping it short enough to be followed, checked-in project memory vs personal notes"},
+		{ID: 8, Name: "Plan Mode & Working in Steps",
+			Skills: "when to plan before letting Claude edit, entering and exiting plan mode, reviewing and revising a plan before approving it, todo lists for multi-step work, breaking a large feature into sessions"},
+		{ID: 9, Name: "Slash Commands & Skills",
+			Skills: "built-in slash commands, writing a custom command in .claude/commands as a markdown file, passing arguments, skills in .claude/skills with a SKILL.md, recognising when a prompt you keep retyping should become a command"},
+		{ID: 10, Name: "Settings, Permissions & Hooks",
+			Skills: "settings.json and its scopes (user, project, local), permission allow/deny rules to reduce prompting, what hooks are: shell commands run on lifecycle events, a simple hook as a guardrail (e.g. block edits to a protected file) or automation (e.g. format after edit)"},
+		{ID: 11, Name: "Subagents & Parallel Work",
+			Skills: "what a subagent is: a fresh context doing delegated work, when delegation helps (independent or parallel subtasks) and when it hurts (shared context, tiny tasks), defining a custom agent in .claude/agents with its own prompt and tools, the cost of re-establishing context"},
+		{ID: 12, Name: "Headless Mode & Scripting",
+			Skills: "claude -p for one-shot non-interactive runs, piping input in and capturing output, JSON output for machine consumption, using Claude Code inside shell scripts and CI jobs, why automation needs stricter permissions and verification than interactive use"},
+		{ID: 13, Name: "The Claude API",
+			Skills: "Claude Code vs the raw API and when each fits, API keys and the developer console, the Messages endpoint: model, max_tokens, system prompt, user/assistant roles, reading the response and stop reason, a first request with curl"},
+	},
+	Tracks:   claudeTracks,
+	Projects: claudeProjects,
 }

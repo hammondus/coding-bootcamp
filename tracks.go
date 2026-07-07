@@ -267,3 +267,72 @@ var javascriptTracks = []Track{
 		},
 	},
 }
+
+// ── Claude tracks ─────────────────────────────────────
+// Track order mirrors how the skills build: prompt craft applies everywhere
+// and has no prerequisites, so it leads. Agentic Workflows and Extending
+// Claude Code both deepen the fundamentals' automation topics (8-12). The
+// API track closes because it assumes another language (Go) for its
+// examples — it is the bridge from using Claude to building with it.
+
+var claudeTracks = []Track{
+	{
+		ID:          "prompt-engineering",
+		Title:       "Prompt Engineering",
+		Icon:        "✍️",
+		Description: "Go beyond good-enough prompts: structure, examples, output control, long context, and knowing whether a change actually helped",
+		Lessons: []TrackLesson{
+			{1, "Anatomy of a Great Prompt", "Role, context, task, constraints, and output format as distinct parts; why instructions go before data; rewriting a vague ask into a precise one"},
+			{2, "Examples & Few-Shot Prompting", "Showing instead of telling: choosing representative examples, formatting them with clear delimiters (XML tags), and how one good example beats three paragraphs of description"},
+			{3, "Structured Output", "Getting JSON, tables, or a fixed schema back reliably: describing the shape, providing a filled-in example, and validating and re-asking when the output doesn't conform"},
+			{4, "Long-Context Strategies", "Working with big inputs: instruction placement, quoting and grounding answers in the source, asking for citations, and summarize-then-work for documents too large to reason over directly"},
+			{5, "Evaluating Prompts", "Treating prompts as code: building a small eval set of inputs with expected outputs, comparing prompt variants against it, and catching regressions when tweaking a prompt that already works"},
+		},
+	},
+	{
+		ID:          "agentic-workflows",
+		Title:       "Agentic Workflows",
+		Icon:        "🤖",
+		Description: "Design multi-step, delegated, and automated workflows where Claude works with less supervision — and verification replaces watching",
+		Prereqs:     "the Claude fundamentals course, especially Plan Mode & Working in Steps, Subagents & Parallel Work, and Headless Mode & Scripting (topics 8, 11, 12) — this track deepens all three rather than re-teaching them",
+		Lessons: []TrackLesson{
+			{1, "Thinking in Agent Loops", "What makes work agentic: the gather-context → act → verify loop, why a verification step beats a better first attempt, and matching autonomy to the cost of a mistake"},
+			{2, "Designing Multi-Step Tasks", "Decomposing a feature into ordered, independently checkable steps with explicit done criteria, deciding where human review belongs, and writing the kickoff prompt that carries the whole plan"},
+			{3, "Custom Subagents", "Writing agent definitions in .claude/agents: a focused system prompt, a restricted tool set, and a model choice per agent — single-responsibility agents like a reviewer, a test-writer, or a researcher"},
+			{4, "Parallel & Background Work", "Fanning independent subtasks out to subagents in one turn, running long work in the background while continuing, and isolating risky work in a git worktree"},
+			{5, "Hooks as Guardrails & Automation", "Hooks that enforce rules no prompt can guarantee: blocking dangerous commands, auto-formatting after edits, requiring tests before a commit, and notifications when long work finishes"},
+			{6, "Headless Pipelines", "claude -p in scripts and CI: structured JSON output, strict permission flags for unattended runs, and pipeline patterns like issue triage, changelog drafting, and scheduled maintenance"},
+			{7, "Project: Automated Code Review", "A complete pipeline: a reviewer subagent with a written rubric, run headlessly by CI against each change, posting findings as a report — with a human still owning the merge"},
+		},
+	},
+	{
+		ID:          "extending",
+		Title:       "Extending Claude Code",
+		Icon:        "🧩",
+		Description: "Package your workflows as commands, skills, hooks, and MCP servers so the whole team gets them for free",
+		Prereqs:     "the Claude fundamentals course, especially Slash Commands & Skills and Settings, Permissions & Hooks (topics 9-10); lesson 5 writes a small program and assumes basic programming in any language",
+		Lessons: []TrackLesson{
+			{1, "Custom Slash Commands", "Commands as markdown files in .claude/commands: arguments, frontmatter, project vs personal scope, and turning your three most-retyped prompts into commands"},
+			{2, "Building Skills", "A skill as a folder with a SKILL.md: writing the description that makes it trigger at the right moment, supporting files, and keeping the main file short with detail loaded on demand"},
+			{3, "Hooks in Depth", "The hook lifecycle events and their matchers, reading tool input as JSON and blocking or allowing with exit codes, and debugging a hook that isn't firing"},
+			{4, "MCP: Connecting External Tools", "What the Model Context Protocol is, adding existing MCP servers to give Claude new tools (databases, browsers, issue trackers), configuration scopes, and the trust decisions that come with third-party tools"},
+			{5, "Building an MCP Server", "A minimal MCP server of your own: exposing one custom tool over stdio, defining its input schema, and watching Claude discover and call it"},
+			{6, "Project: A Team Toolkit", "A checked-in .claude/ directory for a real repository: commands, a skill, guardrail hooks, and MCP config that a new teammate gets working on day one"},
+		},
+	},
+	{
+		ID:    "claude-api",
+		Title: "The Claude API in Go",
+		Icon:  "🔌",
+		Description: "Call Claude from your own programs: the Messages API, streaming, conversations, tool use, and production robustness — in Go with only the standard library. " +
+			"Complete the Go fundamentals and the Go HTTP track first: every lesson writes Go against a real HTTP API.",
+		Prereqs: "the Claude fundamentals course topic 13 (The Claude API — the endpoint and roles are introduced there), Go fundamentals, and the Go HTTP track lessons 1-4 (clients, JSON bodies, headers and auth); Standard Library lesson 4 (encoding/json) helps but the structs used are shown in full",
+		Lessons: []TrackLesson{
+			{1, "Messages in Go", "Request and response structs for the Messages endpoint, sending a system prompt and user message with net/http, and handling the API's error responses by status code"},
+			{2, "Streaming Responses", "stream: true and Server-Sent Events: parsing the event stream line by line with bufio, printing text deltas as they arrive, and detecting a clean finish vs a truncated one"},
+			{3, "Multi-Turn Conversations", "Managing the messages array as conversation state, alternating roles correctly, and coping with context growth: trimming old turns and summarizing history"},
+			{4, "Tool Use", "Defining a tool with a JSON schema, the stop_reason tool_use loop — execute the tool, append the result, call again — and handling several tool calls in one response"},
+			{5, "Robustness & Cost", "Timeouts and cancellation with context, bounded retry with backoff on 429/529/5xx, counting tokens to predict cost, and caching repeated prompt prefixes"},
+		},
+	},
+}
