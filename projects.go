@@ -160,3 +160,28 @@ var claudeProjects = []Project{
 		},
 	},
 }
+
+// ── Git & CI/CD projects ──────────────────────────────
+
+var gitProjects = []Project{
+	{
+		// Like the Claude capstone, deliverables here are not program code:
+		// each milestone is submitted as the commands run, the YAML checked
+		// in, and a short written account of what happened — and the student
+		// proves it works against their own real repository on GitHub.
+		ID:          "ship-it",
+		Title:       "Ship It: A Complete Delivery Pipeline",
+		Icon:        "🚢",
+		Description: "Take a project of your own from a lone local folder to a GitHub repository with protected branches, a PR-based workflow, full CI, and automated versioned releases — the delivery setup a senior engineer would build.",
+		Goal:        "a real repository on GitHub where nothing reaches main except through a reviewed, green-CI pull request, and every release is a tagged, automated, documented build — with the whole setup checked in and written up so a new teammate could operate it from day one",
+		Prereqs:     "the entire Git & CI/CD fundamentals course; the GitHub Actions in Depth and Release Engineering tracks deepen several milestones but the fundamentals are enough to complete them all; you also need a small project of your own (any language, even a static site) to apply each milestone to",
+		Milestones: []ProjectMilestone{
+			{1, "Repository Foundations", "The project published to GitHub as a clean repository: a sensible .gitignore, a README that says what it is and how to run it, and a tidy commit history with well-written messages"},
+			{2, "Branch Protection & PR Flow", "main protected so changes arrive only by pull request with a review and passing checks, a PR template that prompts for context, and a first feature merged through the full flow"},
+			{3, "Continuous Integration", "A workflow that builds and tests the project on every pull request, made a required status check — from here on, a red build blocks the merge"},
+			{4, "Faster, Broader CI", "The pipeline hardened: a matrix across versions or platforms where it makes sense, dependency caching, path filters so docs-only changes skip the build, and a status badge in the README"},
+			{5, "Automated Releases", "A tag-triggered release pipeline: pushing v1.2.3 builds the artifacts, generates release notes from the history, and publishes a GitHub Release with no manual steps"},
+			{6, "Deploy & Hand Over", "A deploy job gated behind a GitHub Environment with manual approval (a real deploy or a documented simulation), plus a CONTRIBUTING guide covering branching, reviews, releases, and rollback — the handover document for the next teammate"},
+		},
+	},
+}

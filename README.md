@@ -4,6 +4,7 @@ A personalised coding bootcamp that teaches to code in various languages.
 Currently it covers:
 - Backend languages Go and Zig
 - Frontend. HTML, CSS and Javascript
+- Development. Claude (AI-assisted development) and Git & CI/CD (code management with git, GitHub and GitHub Actions)
 
 It uses AI to write a lessons.
 Based on the content in the lesson, it will write challenges.

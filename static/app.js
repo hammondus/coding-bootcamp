@@ -436,12 +436,11 @@ async function switchLang(id, reset = true) {
   applyLangTheme(lang);
   await Promise.all([loadTopics(), loadTracks(), loadProjects()]);
   if (reset) {
+    // Let selectTopic's reset path restore the panels (JS cache → server
+    // cache → empty state), exactly as if the topic had been clicked. Cache
+    // keys are language-scoped, so nothing leaks from the previous language.
     const firstIncomplete = S.topics.find(t => !t.completed);
-    selectTopic(firstIncomplete ? firstIncomplete.id : 1, false);
-    resetLessonPanel();
-    resetChallengePanel();
-    resetQuizPanel();
-    renderChat();
+    selectTopic(firstIncomplete ? firstIncomplete.id : 1);
   }
 }
 

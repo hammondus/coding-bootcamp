@@ -90,7 +90,9 @@ type Category struct {
 var categories = []Category{
 	{ID: "backend", Name: "Backend", Langs: []string{"go", "zig"}},
 	{ID: "frontend", Name: "Frontend", Langs: []string{"javascript", "html", "css"}},
-	{ID: "ai", Name: "AI Development", Langs: []string{"claude"}},
+	// "Development" holds craft courses that aren't tied to one programming
+	// language: code management (git) and AI-assisted development (claude).
+	{ID: "development", Name: "Development", Langs: []string{"git", "claude"}},
 }
 
 var languages = map[string]Language{
@@ -100,6 +102,7 @@ var languages = map[string]Language{
 	"html":       htmlLanguage,
 	"css":        cssLanguage,
 	"claude":     claudeLanguage,
+	"git":        gitLanguage,
 }
 
 // ── Go ────────────────────────────────────────────────
@@ -430,4 +433,67 @@ Claude Code evolves quickly. Teach durable concepts and workflows; where an exac
 	},
 	Tracks:   claudeTracks,
 	Projects: claudeProjects,
+}
+
+// ── Git, GitHub & CI/CD ───────────────────────────────
+
+var gitLanguage = Language{
+	ID:          "git",
+	Name:        "Git & CI/CD",
+	Icon:        "/static/icons/git.svg",
+	Cmd:         "$ git status",
+	AccentColor: "#F05033",
+	AccentDark:  "#BC3A26",
+	AccentGlow:  "rgba(240,80,51,0.15)",
+	CodeLabel:   "GIT",
+	StyleNote:   "One targeted tip on commit hygiene: message quality (imperative subject line, why over what), keeping commits atomic, sensible branch names, or keeping workflow YAML minimal and readable.",
+	StarterTemplate: "```bash\n# Your commands here — or replace this block with workflow YAML\n# or a written answer, whichever the challenge asks for\n```",
+	SystemPrompt: `You are an expert instructor teaching code management with Git, GitHub, and CI/CD, running a hands-on bootcamp.
+You teach clearly, practically, and engagingly. You are patient and encouraging.
+Format all responses in Markdown. Fence every example: bash fences for terminal commands and their output, yaml fences for GitHub Actions workflows, text fences for file trees, diffs, and conflict markers.
+Be concise but thorough. Include practical, real-world examples.
+This course teaches a craft, not a programming language: student submissions are command sequences, commit messages, workflow YAML, and written explanations of what they would do and why. Evaluate them on correctness, safety (could this lose work or break a shared branch?), and whether the reasoning is sound — commands cannot be executed here, so your judgment is the feedback loop.
+Assume the student works in a terminal on macOS or Linux with git installed and a free GitHub account. GitHub's UI and Actions evolve quickly; teach durable concepts and commands, and where a menu name or YAML detail may have changed since your knowledge was current, say so and point the student to the official docs rather than guessing.`,
+	// The sequence is deliberately local-first: topics 1-6 need no GitHub
+	// account (branches and even merge conflicts happen locally), 7-11 add
+	// sharing and collaboration, and 12-15 automate it. Undoing Things sits
+	// right after the first commits because fear of losing work is the biggest
+	// beginner blocker — knowing the reflog safety net changes how bravely
+	// everything after it is practiced. CI/CD waits until pull requests and
+	// team workflow exist, because a status check has no meaning until there
+	// is a merge for it to block.
+	Topics: []Topic{
+		{ID: 1, Name: "Version Control Concepts",
+			Skills: "what version control solves (history, undo, collaboration, backup), a repository as a series of commits (snapshots, not diffs), the working tree vs the repository, distributed vs centralized — every clone is a full copy, where git ends and GitHub begins; installing git, one-time setup with git config --global user.name / user.email, getting help with git help"},
+		{ID: 2, Name: "Your First Repository",
+			Skills: "git init, the three areas: working tree → staging area (git add) → history (git commit), git status as the constant companion, writing a commit message with -m, viewing history with git log, ignoring generated files with .gitignore, git rm and git mv"},
+		{ID: 3, Name: "Reading History & Diffs",
+			Skills: "git log --oneline / -p / --stat / --graph and limiting it by count or path, git diff between working tree, staging area, and commits, git show for one commit, commit hashes and short hashes, HEAD and the ~ / ^ ancestry syntax, git blame for who-last-touched-this-line"},
+		{ID: 4, Name: "Undoing Things",
+			Skills: "discarding working-tree changes with git restore, unstaging with git restore --staged, fixing the last commit with git commit --amend, git revert as the safe public undo, git reset --soft / --mixed / --hard and when each is safe, the reflog as the safety net that makes almost anything recoverable"},
+		{ID: 5, Name: "Branches & Merging",
+			Skills: "a branch as a movable pointer to a commit, git branch and git switch (-c to create), why branches are cheap and enable fearless experiments, merging with git merge, fast-forward vs merge commits (--no-ff), listing branches and deleting merged ones"},
+		{ID: 6, Name: "Merge Conflicts",
+			Skills: "why conflicts happen (the same lines changed on both branches), reading conflict markers (<<<<<<< / ======= / >>>>>>>), resolving by editing then git add and completing the merge, bailing out with git merge --abort, keeping conflicts small with short-lived branches and frequent merges"},
+		{ID: 7, Name: "Remotes & GitHub",
+			Skills: "creating a repository on GitHub, git clone, remotes and origin, git remote -v, publishing a branch with git push -u origin, git fetch vs git pull, HTTPS vs SSH authentication and setting up an SSH key, the README as the repository's front page"},
+		{ID: 8, Name: "Pull Requests & Code Review",
+			Skills: "the feature-branch workflow: branch → push → open a pull request, writing a PR title and description that helps the reviewer, draft PRs, reviewing: line comments, approving, requesting changes, responding to review with follow-up commits, the three merge methods (merge commit / squash / rebase) and when each fits, linking issues with closes #N"},
+		{ID: 9, Name: "Team Workflows",
+			Skills: "trunk-based development vs long-lived release branches (GitFlow) and why small short-lived branches win, keeping a feature branch current: merging main in vs rebasing onto main, protected branches and required reviews, CODEOWNERS, the fork-and-PR model for open source, PR and issue templates in .github"},
+		{ID: 10, Name: "Rewriting History",
+			Skills: "interactive rebase with git rebase -i: reword, squash, fixup, drop, and reordering commits, cherry-pick to copy a commit between branches, force-pushing a rebased branch with --force-with-lease, the golden rule: never rewrite history others may have pulled, cleaning up a messy branch before opening the PR"},
+		{ID: 11, Name: "Tags & Releases",
+			Skills: "semantic versioning (major.minor.patch) and what each bump promises users, lightweight vs annotated tags (git tag -a), pushing tags, checking out a tag, GitHub Releases with release notes and attached files, maintaining a changelog humans can actually read"},
+		{ID: 12, Name: "CI/CD Concepts",
+			Skills: "what continuous integration is: build and test every change, fail fast; continuous delivery vs continuous deployment, the anatomy of a pipeline: trigger → jobs → artifacts, why automation beats checklists (repeatable, reviewable, blocking), status checks on PRs as the quality gate, where GitHub Actions sits among CI providers"},
+		{ID: 13, Name: "First GitHub Actions Workflow",
+			Skills: "workflow files live in .github/workflows, YAML anatomy: name, on (push / pull_request), jobs, runs-on, steps, uses for actions vs run for commands, actions/checkout and the setup-* actions, reading logs in the Actions tab and re-running failed jobs, a status badge in the README"},
+		{ID: 14, Name: "Workflows in Practice",
+			Skills: "triggers in depth: branch and path filters, workflow_dispatch for manual runs, schedule with cron; a job matrix across versions or operating systems, caching dependencies to speed up runs, encrypted secrets and why credentials never go in the repo, uploading artifacts, making a workflow a required status check so a red build blocks the merge"},
+		{ID: 15, Name: "Deploying with Pipelines",
+			Skills: "a deploy job that runs only after tests pass (needs), deploying on merge to main vs on a tag push, GitHub Environments with protection rules and manual approval, environment-scoped secrets, rollback by reverting the commit or redeploying the previous version, a first look at safer rollouts: blue-green and canary in brief"},
+	},
+	Tracks:   gitTracks,
+	Projects: gitProjects,
 }

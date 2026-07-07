@@ -268,6 +268,61 @@ var javascriptTracks = []Track{
 	},
 }
 
+// ── Git tracks ────────────────────────────────────────
+// Track order mirrors demand and dependency: Actions in Depth directly
+// extends fundamentals topics 13-15 and is the skill teams ask for most;
+// Advanced Git can be taken any time after the fundamentals; Release
+// Engineering closes the loop from merged code to shipped software and
+// leans on both.
+
+var gitTracks = []Track{
+	{
+		ID:          "actions-in-depth",
+		Title:       "GitHub Actions in Depth",
+		Icon:        "⚙️",
+		Description: "Go from using Actions to engineering them: expressions, reusable workflows, custom actions, security, and runners",
+		Prereqs:     "the Git & CI/CD fundamentals course, especially First GitHub Actions Workflow, Workflows in Practice, and Deploying with Pipelines (topics 13-15) — this track deepens all three rather than re-teaching them",
+		Lessons: []TrackLesson{
+			{1, "Contexts & Expressions", "The ${{ }} expression syntax, the github / env / secrets / needs contexts, if: conditions on jobs and steps, and passing data between steps and jobs with outputs"},
+			{2, "Reusable Workflows & Composite Actions", "DRY for pipelines: workflow_call with inputs and secrets, composite actions for repeated step sequences, and choosing between the two"},
+			{3, "Writing a Custom Action", "An action of your own: action.yml metadata, inputs and outputs, implementing it as a JavaScript or Docker action, and versioning it with tags so others can pin it"},
+			{4, "Actions Security", "Least-privilege GITHUB_TOKEN permissions, pinning third-party actions to a commit SHA, the pull_request_target trap, script injection through untrusted inputs, and OIDC to cloud providers instead of long-lived secrets"},
+			{5, "Runners & Performance", "GitHub-hosted vs self-hosted runners, labels and runner groups, concurrency groups with cancel-in-progress, and cutting billable minutes with caching and path filters"},
+			{6, "Debugging Workflows", "Reading raw logs, enabling step debug logging, re-running jobs with debug output, testing workflows locally, and instrumenting a flaky pipeline to find what is actually failing"},
+		},
+	},
+	{
+		ID:          "advanced-git",
+		Title:       "Advanced Git",
+		Icon:        "🌿",
+		Description: "How git actually works — objects, refs, and the plumbing — and the power tools that knowledge unlocks",
+		Prereqs:     "the Git & CI/CD fundamentals course, especially Undoing Things and Rewriting History (topics 4 and 10) — reset, rebase, and the reflog are assumed known and get explained one level deeper here",
+		Lessons: []TrackLesson{
+			{1, "The Object Model", "Blobs, trees, commits, and tags inside .git/objects, content addressing by SHA, why commits really are snapshots, and inspecting objects with git cat-file"},
+			{2, "Refs, HEAD & the Reflog", "Branches as small files in .git/refs, symbolic refs, detached HEAD explained properly, and using the reflog to recover commits and branches that look lost"},
+			{3, "Stash & Worktrees", "git stash beyond the basics: stashing partial changes, pop vs apply, and git worktree for working on two branches at once without a second clone"},
+			{4, "Finding Things: bisect & pickaxe", "git bisect to binary-search history for the commit that broke it (including automating with bisect run), git log -S / -G to find when code appeared or vanished, and git grep"},
+			{5, "Hooks & Automation", "Client-side hooks (pre-commit, commit-msg, pre-push): what they can and cannot enforce, sharing hooks with a team, and where server-side enforcement — protected branches and CI — has to take over"},
+			{6, "Submodules & Subtrees", "Nesting repositories: how a submodule really works (a pinned commit pointer), its sharp edges, subtree as an alternative, and when plain package management beats both"},
+			{7, "Disaster Recovery", "Un-losing work: recovering from a bad reset or rebase with the reflog, undoing a force-push, moving a commit made on the wrong branch, and purging a leaked secret from history — and why rotating it still matters"},
+		},
+	},
+	{
+		ID:          "release-engineering",
+		Title:       "Release Engineering",
+		Icon:        "🚀",
+		Description: "Turn merged code into shipped software: versioning, automated releases, deployment strategies, and keeping main always releasable",
+		Prereqs:     "the Git & CI/CD fundamentals course, especially Tags & Releases and Deploying with Pipelines (topics 11 and 15); the GitHub Actions in Depth track helps with the automation lessons but is not required",
+		Lessons: []TrackLesson{
+			{1, "Versioning Strategies", "Semantic versioning in practice, conventional commit messages as machine-readable history, pre-release and build metadata, and how versioning an application differs from versioning a library"},
+			{2, "Automated Release Pipelines", "A tag-triggered pipeline that builds artifacts, generates release notes from the commit history, and publishes a GitHub Release — no human steps between pushing the tag and the finished release"},
+			{3, "Deployment Strategies", "Rolling, blue-green, and canary deployments, feature flags to decouple deploying code from releasing features, and choosing a strategy by blast radius and rollback speed"},
+			{4, "Environments & Promotion", "Dev → staging → production promotion pipelines, environment protection rules and manual approvals, environment-scoped secrets and configuration, and smoke tests as the gate between stages"},
+			{5, "Keeping Main Releasable", "Trunk-based development in practice: small PRs, feature flags instead of release branches, a revert-first culture when main breaks, and release trains vs ship-on-green"},
+		},
+	},
+}
+
 // ── Claude tracks ─────────────────────────────────────
 // Track order mirrors how the skills build: prompt craft applies everywhere
 // and has no prerequisites, so it leads. Agentic Workflows and Extending
