@@ -211,6 +211,7 @@ func handleTopics(w http.ResponseWriter, r *http.Request, user string) {
 		Name         string `json:"name"`
 		Completed    bool   `json:"completed"`
 		LessonCached bool   `json:"lessonCached"`
+		QuizCached   bool   `json:"quizCached"`
 		// One flag per difficulty tier, e.g. {"beginner": true, "goat": false}.
 		ChallengeCached map[string]bool `json:"challengeCached"`
 		// One flag per tier: the student marked that tier's challenge complete.
@@ -229,6 +230,7 @@ func handleTopics(w http.ResponseWriter, r *http.Request, user string) {
 			Name:            t.Name,
 			Completed:       done[fmt.Sprintf("%d", t.ID)],
 			LessonCached:    cacheHas(user, fmt.Sprintf("%s:lesson:%d", langID, t.ID)),
+			QuizCached:      cacheHas(user, quizCacheKey(langID, t.ID)),
 			ChallengeCached: challenges,
 			ChallengeDone:   challengesDone,
 		}
@@ -286,31 +288,49 @@ Do not build examples on any concept beyond this topic's skills and the earlier
 topics above. If a small forward reference is truly unavoidable, explain it
 inline in one sentence — never assume it.
 
+This lesson is the student's main study text for the topic — be generous with
+depth. Explain each idea fully rather than gesturing at it; a motivated
+beginner should be able to attempt the challenges from this lesson alone.
+
 Use this structure:
 
 ## Overview
 2–3 sentences introducing the concept and why it matters in %s.
 
 ## Key Concepts
-5–7 bullet points, each with a brief explanation.
+5–7 bullet points. Give each concept 2–3 sentences of real explanation, and
+where a single line of code makes the idea concrete, include it inline.
 
 ## Code Examples
 
 ### Example 1: [Descriptive title]
-Show and explain a minimal, clear example.
+A minimal, clear example of the core idea. After the code, walk through what
+happens when it runs, step by step, in plain prose.
 
 ### Example 2: [Descriptive title]
-Show a more practical, realistic usage.
+A more practical, realistic usage. Explain what it adds beyond Example 1.
+
+### Example 3: [Descriptive title]
+An example that combines this topic with skills from the earlier topics above
+(for the very first topic, show a variation or edge case instead). Explain how
+the pieces work together.
+
+## How It Works
+A short section one level deeper: the mental model behind this topic — what
+%s is actually doing and why the language designed it this way. Keep it
+beginner-friendly; no internals beyond what helps them reason about their code.
 
 ## Common Pitfalls
-3 specific mistakes beginners make with this topic and how to avoid them.
+3–4 specific mistakes beginners make with this topic. For each, show the
+mistake and the fix — a short wrong-vs-right code snippet where it helps.
 
 ## Summary
 One crisp sentence: the essential takeaway.`,
 		topic.ID, len(lang.Topics), topic.Name, lang.Name,
 		topic.Skills,
 		prior,
-		lang.Name)
+		lang.Name,
+		topic.Name)
 
 	streamLLM(r.Context(), w, user, lang.SystemPrompt, prompt, nil, func(full string) {
 		cacheStore(user, key, full)

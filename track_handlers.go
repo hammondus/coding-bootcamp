@@ -72,6 +72,7 @@ func handleTracks(w http.ResponseWriter, r *http.Request, user string) {
 		Summary      string `json:"summary"`
 		Completed    bool   `json:"completed"`
 		LessonCached bool   `json:"lessonCached"`
+		QuizCached   bool   `json:"quizCached"`
 		// One flag per difficulty tier, e.g. {"beginner": true, "goat": false}.
 		ChallengeCached map[string]bool `json:"challengeCached"`
 		// One flag per tier: the student marked that tier's challenge complete.
@@ -101,6 +102,7 @@ func handleTracks(w http.ResponseWriter, r *http.Request, user string) {
 				Summary:         l.Summary,
 				Completed:       done[fmt.Sprintf("track:%s:%d", t.ID, l.ID)],
 				LessonCached:    cacheHas(user, fmt.Sprintf("%s:track:%s:%d", langID, t.ID, l.ID)),
+				QuizCached:      cacheHas(user, trackQuizCacheKey(langID, t.ID, l.ID)),
 				ChallengeCached: challenges,
 				ChallengeDone:   challengesDone,
 			}
@@ -161,25 +163,42 @@ func handleTrackLesson(w http.ResponseWriter, r *http.Request, user string) {
 
 ## Your task: teach **%s**
 
+This lesson is the student's main study text for the topic — be generous with
+depth. Explain each idea fully rather than gesturing at it; the student should
+be able to attempt the challenges from this lesson alone.
+
 Structure your lesson as follows:
 
 ## Overview
 What this lesson introduces and how it builds on what came before (2–3 sentences).
 
 ## Key Concepts
-5–7 new concepts, each with a brief explanation.
+5–7 new concepts. Give each 2–3 sentences of real explanation, and where a
+single line of code makes the idea concrete, include it inline.
 
 ## Code Examples
 
 ### Example 1: [Descriptive title]
-A clear, focused example of the core new concept.
+A clear, focused example of the core new concept. After the code, walk through
+what happens when it runs, step by step, in plain prose.
 
 ### Example 2: [Descriptive title]
-A more complete or practical usage, building directly on Example 1.
+A more complete or practical usage, building directly on Example 1. Explain
+what it adds beyond Example 1.
+
+### Example 3: [Descriptive title]
+A realistic example that ties this lesson's material to the track's goal.
+Explain how the pieces work together.
 %s
 
+## How It Works
+A short section one level deeper: the mental model behind this lesson's topic —
+what is actually going on and why it's designed that way. Keep it grounded; no
+internals beyond what helps the student reason about their code.
+
 ## Common Mistakes
-2–3 mistakes specific to this lesson's topic.
+2–3 mistakes specific to this lesson's topic. For each, show the mistake and
+the fix — a short wrong-vs-right code snippet where it helps.
 
 ## Summary
 One sentence: what the student can now do that they couldn't before this lesson.`,

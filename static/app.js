@@ -29,6 +29,14 @@ const S = {
   // Chat history: lang → cacheKey → [{role,content}]
   chatHistory:  {},
 
+  // Quiz state, keyed by the same selection key as lessons: the raw quiz
+  // markdown (the form is rebuilt from it), per-question answer drafts, and
+  // the last graded feedback, so all three survive switching topics or tabs
+  // within the session.
+  quizRaw:      {},
+  quizAnswers:  {},   // key → [one answer per question]
+  quizFeedback: {},   // key → rendered feedback HTML
+
   streaming:    false,
 
   // ── Track state ───────────────────────────
@@ -339,6 +347,9 @@ async function logout() {
   S.challengeRaw = {};
   S.editorDrafts = {};
   S.chatHistory = {};
+  S.quizRaw = {};
+  S.quizAnswers = {};
+  S.quizFeedback = {};
   showLoginModal();
 }
 
@@ -429,6 +440,7 @@ async function switchLang(id, reset = true) {
     selectTopic(firstIncomplete ? firstIncomplete.id : 1, false);
     resetLessonPanel();
     resetChallengePanel();
+    resetQuizPanel();
     renderChat();
   }
 }
@@ -476,11 +488,15 @@ async function changeModel(id) {
   // Generated content is cached per model, so what's on screen may no longer
   // match the selection. Drop the JS content caches and reload — the same
   // clean-slate treatment switching language gets. Editor drafts survive:
-  // the student's own code isn't model-specific.
+  // the student's own code isn't model-specific. Quiz answers don't — they
+  // belong to the old model's questions.
   S.lessons      = {};
   S.challenges   = {};
   S.challengeRaw = {};
   S.chatHistory  = {};
+  S.quizRaw      = {};
+  S.quizAnswers  = {};
+  S.quizFeedback = {};
   await Promise.all([loadTopics(), loadTracks(), loadProjects()]);
   if (S.mode === 'fundamentals') {
     selectTopic(S.activeId, true);
@@ -541,6 +557,13 @@ function renderHeader() {
   // the guide is selected (and comes back with any other selection).
   document.querySelector('.tab[data-tab="challenge"]')
     .classList.toggle('hidden', S.mode === 'setup');
+
+  // Quizzes exist only where generated lessons do — fundamentals and tracks.
+  // The setup guide is hand-written and projects quiz nothing, so both hide
+  // the Quiz tab and the lesson footer's quiz button.
+  const quizless = S.mode === 'setup' || S.mode === 'project';
+  document.querySelector('.tab[data-tab="quiz"]').classList.toggle('hidden', quizless);
+  $('lesson-quiz-btn').classList.toggle('hidden', quizless);
 
   if (S.mode === 'setup') {
     const lang = S.langs.find(l => l.id === S.lang);
@@ -641,6 +664,7 @@ function selectTopic(id, reset = true) {
     };
     if (S.activeTab === 'challenge') { restoreChallenge(); restoreLesson(); }
     else                             { restoreLesson(); restoreChallenge(); }
+    restoreQuiz(); // JS cache → empty; a server-cached quiz loads on tab open
 
     closeEval();
     $('code-editor').value = '';
@@ -672,6 +696,9 @@ function switchTab(tab) {
     } else if (tab === 'challenge'
         && !S.challenges[activeChallengeKey()] && activeChallengeCached()) {
       loadChallenge();
+    } else if (tab === 'quiz'
+        && !S.quizRaw[activeCacheKey()] && activeQuizCached()) {
+      loadQuiz();
     }
   }
 }
@@ -773,9 +800,9 @@ function selectSetup() {
   renderTopics();
   renderHeader();
   renderChat();
-  // The challenge tab doesn't exist here; land on the lesson tab instead.
-  // switchTab's lazy-load path fetches the guide via loadLesson when needed.
-  switchTab(S.activeTab === 'challenge' ? 'lesson' : S.activeTab);
+  // Neither the challenge nor the quiz tab exists here; land on the lesson
+  // tab instead. switchTab's lazy-load path fetches the guide when needed.
+  switchTab(S.activeTab === 'challenge' || S.activeTab === 'quiz' ? 'lesson' : S.activeTab);
   loadSetupGuide();
   loadWorkspace(); // restore any saved setup chat
 }
@@ -812,6 +839,252 @@ async function loadSetupGuide() {
   showLessonContent(S.lessons[key]);
   // No Regenerate or Try Challenge for a static guide.
   $('lesson-footer').classList.add('hidden');
+}
+
+// ── Quiz panel ─────────────────────────────────
+// The optional knowledge check between lesson and challenge (fundamentals and
+// tracks only). The server streams the quiz as markdown in a strict format
+// (see quiz.go); once the stream finishes, parseQuiz turns it into question
+// objects and renderQuizForm builds an interactive answer form. Grading is a
+// single call: submitQuiz sends the quiz text plus every answer and streams
+// the feedback into a results box below the questions. Nothing gates on the
+// quiz — the challenge only ever requires the lesson.
+
+function resetQuizPanel() {
+  $('quiz-empty').classList.remove('hidden');
+  $('quiz-output').classList.add('hidden');
+  $('quiz-output').innerHTML = '';
+  $('quiz-form').classList.add('hidden');
+  $('quiz-form').innerHTML = '';
+  $('quiz-footer').classList.add('hidden');
+}
+
+// Restore the quiz panel for the current selection: JS cache → empty state.
+// A quiz cached server-side but not seen this session is fetched lazily when
+// the tab is opened (see switchTab), so it never competes for the one stream
+// the visible tab needs.
+function restoreQuiz() {
+  const key = activeCacheKey();
+  if ((S.mode !== 'fundamentals' && S.mode !== 'track') || !S.quizRaw[key]) {
+    resetQuizPanel();
+    return;
+  }
+  showQuiz(S.quizRaw[key]);
+}
+
+// True when the current selection has a quiz cached server-side.
+function activeQuizCached() {
+  if (S.mode === 'setup' || S.mode === 'project') return false;
+  return S.mode === 'track'
+    ? !!S.activeTrackLesson?.quizCached
+    : !!activeTopic()?.quizCached;
+}
+
+// Markdown for a single inline fragment (an answer option) — no wrapping <p>.
+function parseInline(text) {
+  return typeof marked.parseInline === 'function' ? marked.parseInline(text || '') : (text || '');
+}
+
+// Parse the strict quiz format into question objects:
+//   ### Question N (Multiple Choice)  |  ### Question N (Free Response)
+// with multiple-choice options one per line as "- A) …" through "- D) …".
+// Returns [] when the text doesn't match (the model went off-format); the
+// caller then shows the raw markdown instead of a form.
+function parseQuiz(md) {
+  const parts = md.split(/^###\s+Question\s+(\d+)\s*\((Multiple Choice|Free Response)\)\s*$/mi);
+  const questions = [];
+  // split with capture groups yields [intro, num, kind, body, num, kind, body, …]
+  for (let i = 1; i + 2 < parts.length; i += 3) {
+    const num  = parseInt(parts[i], 10);
+    const kind = parts[i + 1].toLowerCase() === 'multiple choice' ? 'mc' : 'free';
+    const body = parts[i + 2] || '';
+    if (kind === 'free') {
+      questions.push({ num, kind, body: body.trim() });
+      continue;
+    }
+    const options = [];
+    const bodyLines = [];
+    for (const line of body.split('\n')) {
+      const m = line.match(/^\s*[-*]\s*([A-D])\)\s+(.+)$/);
+      if (m) options.push({ letter: m[1], text: m[2].trim() });
+      else if (!options.length) bodyLines.push(line); // options end the body
+    }
+    if (options.length < 2) return []; // off-format — no usable options
+    questions.push({ num, kind, body: bodyLines.join('\n').trim(), options });
+  }
+  return questions;
+}
+
+// Build the interactive answer form from a finished quiz. Returns false when
+// the text can't be parsed (caller falls back to raw markdown). Answer drafts
+// read from and write to S.quizAnswers, so they survive rebuilding the form.
+function renderQuizForm(raw) {
+  const questions = parseQuiz(raw);
+  if (!questions.length) return false;
+
+  const key   = activeCacheKey();
+  const saved = S.quizAnswers[key] || (S.quizAnswers[key] = []);
+  const form  = $('quiz-form');
+  form.innerHTML = '';
+
+  // Everything before the first question: the "## Quiz" heading and intro.
+  const intro = el('div', 'md-output quiz-intro', parseMarkdown(raw.split(/^###\s+Question\s/m)[0]));
+  applyHighlight(intro);
+  form.appendChild(intro);
+
+  questions.forEach((q, idx) => {
+    const card = el('div', 'quiz-q');
+    card.appendChild(el('div', 'quiz-q-head',
+      `Question ${q.num} <span class="quiz-q-kind">${q.kind === 'mc' ? 'multiple choice' : 'free response'}</span>`));
+    const body = el('div', 'md-output quiz-q-body', parseMarkdown(q.body));
+    applyHighlight(body);
+    card.appendChild(body);
+
+    if (q.kind === 'mc') {
+      q.options.forEach(o => {
+        const label = el('label', 'quiz-opt');
+        const input = document.createElement('input');
+        input.type    = 'radio';
+        input.name    = `quiz-q-${idx}`;
+        input.value   = o.letter;
+        input.checked = saved[idx] === o.letter;
+        input.addEventListener('change', () => { saved[idx] = o.letter; });
+        label.appendChild(input);
+        label.appendChild(el('span', 'quiz-opt-text', `<strong>${o.letter})</strong> ${parseInline(o.text)}`));
+        card.appendChild(label);
+      });
+    } else {
+      const ta = document.createElement('textarea');
+      ta.className   = 'quiz-free';
+      ta.id          = `quiz-free-${idx}`;
+      ta.rows        = 3;
+      ta.placeholder = 'Type your answer…';
+      ta.spellcheck  = false;
+      ta.value       = saved[idx] || '';
+      ta.addEventListener('input', () => { saved[idx] = ta.value; });
+      card.appendChild(ta);
+    }
+    form.appendChild(card);
+  });
+
+  // Results box at the bottom — grading streams in here.
+  const result = el('div', 'quiz-result hidden');
+  result.id = 'quiz-result';
+  result.innerHTML = '<div class="quiz-result-title">🎓 Results</div><div class="md-output" id="quiz-result-output"></div>';
+  form.appendChild(result);
+
+  // Feedback already earned this session comes back with the form.
+  if (S.quizFeedback[key]) {
+    result.classList.remove('hidden');
+    result.querySelector('#quiz-result-output').innerHTML = S.quizFeedback[key];
+  }
+  return true;
+}
+
+// Show a finished quiz: as an interactive form when it parses, otherwise as
+// plain markdown with a nudge to regenerate.
+function showQuiz(raw) {
+  $('quiz-empty').classList.add('hidden');
+  const out = $('quiz-output');
+  if (renderQuizForm(raw)) {
+    out.classList.add('hidden');
+    out.innerHTML = '';
+    $('quiz-form').classList.remove('hidden');
+  } else {
+    $('quiz-form').classList.add('hidden');
+    out.classList.remove('hidden');
+    out.innerHTML = parseMarkdown(raw) +
+      '<p><em>⚠️ This quiz didn’t come out in the expected format, so the answer form can’t be shown — hit ↺ New Quiz to regenerate it.</em></p>';
+    applyHighlight(out);
+  }
+  $('quiz-footer').classList.remove('hidden');
+}
+
+function loadQuiz(force = false) {
+  if (S.streaming || !hasSelection()) return;
+  if (S.mode === 'setup' || S.mode === 'project') return;
+  // Like challenges, quizzes are generated from the lesson, and the server
+  // refuses to make one before the lesson exists. Nudge to the lesson tab —
+  // unless the quiz itself is already cached server-side.
+  if (!activeQuizCached() && !activeLessonCached()) {
+    showToast('Load the lesson first — the quiz is based on it', 'info');
+    switchTab('lesson');
+    return;
+  }
+  const key = activeCacheKey();
+  // Live sidebar entry, so a clean finish can flip its quizCached flag (same
+  // reason loadLesson grabs it — see the comment there).
+  const entry = S.mode === 'track' ? S.activeTrackLesson : activeTopic();
+  $('quiz-empty').classList.add('hidden');
+  $('quiz-form').classList.add('hidden');
+  $('quiz-footer').classList.add('hidden');
+  const out = $('quiz-output');
+  out.innerHTML = '';
+  out.classList.remove('hidden');
+  out.classList.add('streaming');
+
+  streamFetch(
+    endpoint('quiz'),
+    reqBody({ force }),
+    (_, acc) => { out.innerHTML = parseMarkdown(acc); },
+    (full, ok) => {
+      out.classList.remove('streaming');
+      if (!ok) {
+        // Errored stream: the message is already folded into the text —
+        // leave it on screen rather than building a broken form.
+        out.innerHTML = parseMarkdown(full);
+        return;
+      }
+      // Fresh questions mean old answers and feedback no longer apply.
+      S.quizRaw[key]     = full;
+      S.quizAnswers[key] = [];
+      delete S.quizFeedback[key];
+      if (entry) entry.quizCached = true;
+      showQuiz(full);
+    }
+  );
+}
+
+function submitQuiz() {
+  if (S.streaming || !hasSelection()) return;
+  const key = activeCacheKey();
+  const raw = S.quizRaw[key];
+  if (!raw) { showToast('Load a quiz first!', 'error'); return; }
+  const questions = parseQuiz(raw);
+  if (!questions.length) { showToast('This quiz can’t be graded — regenerate it first', 'error'); return; }
+
+  // One answer per question, in order. Multiple choice sends the letter plus
+  // its option text, so grading never depends on the model re-finding what
+  // option "B" said. Unanswered questions go as "" (the server marks them).
+  const answers = questions.map((q, idx) => {
+    if (q.kind === 'mc') {
+      const sel = document.querySelector(`input[name="quiz-q-${idx}"]:checked`);
+      if (!sel) return '';
+      const opt = q.options.find(o => o.letter === sel.value);
+      return opt ? `${opt.letter}) ${opt.text}` : sel.value;
+    }
+    return ($(`quiz-free-${idx}`)?.value || '').trim();
+  });
+  if (answers.every(a => !a)) { showToast('Answer at least one question first!', 'error'); return; }
+
+  const result = $('quiz-result');
+  const out    = $('quiz-result-output');
+  result.classList.remove('hidden');
+  out.innerHTML = '';
+  out.classList.add('streaming');
+  result.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  streamFetch(
+    endpoint('quiz/grade'),
+    reqBody({ quiz: raw, answers }),
+    (_, acc) => { out.innerHTML = parseMarkdown(acc); },
+    (full) => {
+      out.classList.remove('streaming');
+      out.innerHTML = parseMarkdown(full);
+      applyHighlight(out);
+      S.quizFeedback[key] = out.innerHTML;
+    }
+  );
 }
 
 // ── Challenge panel ────────────────────────────
@@ -1394,6 +1667,7 @@ function selectTrackLesson(trackId, lessonId) {
   renderTrackList();
   renderHeader();
   resetChallengePanel();
+  restoreQuiz();
   closeEval();
   $('code-editor').value = '';
   renderChat();
@@ -1522,6 +1796,7 @@ function selectProjectMilestone(projectId, milestoneId) {
   renderProjectList();
   renderHeader();
   resetChallengePanel();
+  resetQuizPanel(); // projects have no quiz
   closeEval();
   $('code-editor').value = '';
   renderChat();
@@ -1582,6 +1857,9 @@ async function postAuthInit() {
   S.challengeRaw = {};
   S.editorDrafts = {};
   S.chatHistory  = {};
+  S.quizRaw      = {};
+  S.quizAnswers  = {};
+  S.quizFeedback = {};
 
   $('username-display').textContent = S.user;
 

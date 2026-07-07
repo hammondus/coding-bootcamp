@@ -130,6 +130,7 @@
     <!-- Tabs -->
     <div class="tabs">
       <button class="tab active" data-tab="lesson"    onclick="switchTab('lesson')">📚 Lesson</button>
+      <button class="tab"        data-tab="quiz"      onclick="switchTab('quiz')">📝 Quiz</button>
       <button class="tab"        data-tab="challenge" onclick="switchTab('challenge')">💻 Challenge</button>
       <button class="tab"        data-tab="chat"      onclick="switchTab('chat')">💬 Ask</button>
     </div>
@@ -153,7 +154,40 @@
         </div>
         <div class="panel-footer hidden" id="lesson-footer">
           <button class="btn-ghost" onclick="loadLesson(true)">↺ Regenerate</button>
+          <!-- Optional knowledge check — hidden where quizzes don't exist
+               (setup guide, projects); see renderHeader. -->
+          <button class="btn-secondary" id="lesson-quiz-btn" onclick="switchTab('quiz')">📝 Take the Quiz</button>
           <button class="btn-primary" onclick="switchTab('challenge')">Try Challenge →</button>
+        </div>
+      </div>
+
+      <!-- ── Quiz panel ── -->
+      <!-- An optional knowledge check between the lesson and the challenge:
+           4 multiple-choice + 2 free-response questions generated from the
+           lesson. Streams as markdown, then becomes an interactive form
+           (see renderQuizForm). Nothing gates on it — skipping is fine. -->
+      <div class="panel hidden" id="panel-quiz">
+        <div class="panel-body">
+
+          <div class="empty" id="quiz-empty">
+            <div class="empty-icon">📝</div>
+            <div class="empty-title">Check your knowledge</div>
+            <div class="empty-sub">A quick optional quiz on this lesson — find any gaps before the challenge. Skipping straight to the challenge is fine too.</div>
+            <button class="btn-primary" onclick="loadQuiz()">Get Quiz</button>
+          </div>
+
+          <!-- Markdown view: shown while the quiz streams in, or as a fallback
+               when the generated text can't be parsed into a form. -->
+          <div class="md-output hidden" id="quiz-output"></div>
+
+          <!-- Interactive answer form, built from the finished quiz text. -->
+          <div class="quiz-form hidden" id="quiz-form"></div>
+
+        </div>
+        <div class="panel-footer hidden" id="quiz-footer">
+          <button class="btn-ghost" onclick="loadQuiz(true)">↺ New Quiz</button>
+          <button class="btn-secondary" onclick="switchTab('challenge')">Skip to Challenge →</button>
+          <button class="btn-primary" id="quiz-submit-btn" onclick="submitQuiz()">Submit Answers</button>
         </div>
       </div>
 

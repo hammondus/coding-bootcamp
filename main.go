@@ -54,6 +54,8 @@ func main() {
 	http.HandleFunc("/api/topics", requireAuth(handleTopics))
 	http.HandleFunc("/api/progress", requireAuth(handleProgress))
 	http.HandleFunc("/api/lesson", requireAuth(handleLesson))
+	http.HandleFunc("/api/quiz", requireAuth(handleQuiz))
+	http.HandleFunc("/api/quiz/grade", requireAuth(handleQuizGrade))
 	http.HandleFunc("/api/challenge", requireAuth(handleChallenge))
 	http.HandleFunc("/api/evaluate", requireAuth(handleEvaluate))
 	http.HandleFunc("/api/hint", requireAuth(handleHint))
@@ -73,6 +75,8 @@ func main() {
 	// Advanced tracks
 	http.HandleFunc("/api/tracks", requireAuth(handleTracks))
 	http.HandleFunc("/api/track/lesson", requireAuth(handleTrackLesson))
+	http.HandleFunc("/api/track/quiz", requireAuth(handleTrackQuiz))
+	http.HandleFunc("/api/track/quiz/grade", requireAuth(handleTrackQuizGrade))
 	http.HandleFunc("/api/track/challenge", requireAuth(handleTrackChallenge))
 	http.HandleFunc("/api/track/evaluate", requireAuth(handleTrackEvaluate))
 	http.HandleFunc("/api/track/hint", requireAuth(handleTrackHint))
