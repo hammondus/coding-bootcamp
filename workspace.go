@@ -20,21 +20,33 @@ type Solution struct {
 	Feedback string `json:"feedback"`
 }
 
+// A QuizWork is the student's last graded quiz attempt: the answers they
+// submitted (one per question, "" = unanswered) and the feedback the grader
+// gave them.
+type QuizWork struct {
+	Answers  []string `json:"answers"`
+	Feedback string   `json:"feedback"`
+}
+
 // Saved student work, so a solution and the conversation around it survive a
-// reload just like the generated challenge text does. Two maps, both guarded
+// reload just like the generated challenge text does. Three maps, all guarded
 // by workspaceMu:
 //
 //	solutions[username][solutionKey] = last submission + its feedback
 //	chats[username][chatKey]         = full chat history for a selection
+//	quizzes[username][quizKey]       = last graded quiz attempt
 //
 // Solutions reuse the challenge cache keys ("go:challenge:1:goat",
 // "go:track:http:challenge:2"; for projects the milestone guidance key,
 // "go:project:bootcamp:milestone:3"). Chats get their own keys (see
 // chatStoreKey and friends) because chat belongs to the topic or lesson as a
-// whole, not to one difficulty tier.
+// whole, not to one difficulty tier. Quiz work reuses the quiz cache keys
+// ("go:quiz:3", "go:track:web:quiz:2") — but model-namespaced, see
+// storeQuizWork.
 var (
 	solutions   = map[string]map[string]Solution{}
 	chats       = map[string]map[string][]Message{}
+	quizzes     = map[string]map[string]QuizWork{}
 	workspaceMu sync.RWMutex
 )
 
@@ -42,6 +54,7 @@ var (
 type workspaceFileData struct {
 	Solutions map[string]map[string]Solution  `json:"solutions"`
 	Chats     map[string]map[string][]Message `json:"chats"`
+	Quizzes   map[string]map[string]QuizWork  `json:"quizzes"`
 }
 
 // Chat history storage keys, one per mode.
@@ -76,17 +89,21 @@ func loadWorkspaces() {
 	if loaded.Chats == nil {
 		loaded.Chats = map[string]map[string][]Message{}
 	}
+	if loaded.Quizzes == nil {
+		loaded.Quizzes = map[string]map[string]QuizWork{}
+	}
 	workspaceMu.Lock()
 	defer workspaceMu.Unlock()
 	solutions = loaded.Solutions
 	chats = loaded.Chats
+	quizzes = loaded.Quizzes
 }
 
 func saveWorkspaces() {
 	writeFileAtomic(workspaceFile, 0644, func() ([]byte, error) {
 		workspaceMu.RLock()
 		defer workspaceMu.RUnlock()
-		return json.MarshalIndent(workspaceFileData{Solutions: solutions, Chats: chats}, "", "  ")
+		return json.MarshalIndent(workspaceFileData{Solutions: solutions, Chats: chats, Quizzes: quizzes}, "", "  ")
 	})
 }
 
@@ -117,6 +134,53 @@ func storeChat(user, key string, history []Message) {
 	go saveWorkspaces()
 }
 
+// storeQuizWork records the student's graded quiz attempt. Each new grading
+// of the same quiz replaces the previous one.
+//
+// Unlike solutions and chats (the student's own words, kept across model
+// switches), quiz answers point at the option letters of one exact quiz
+// text — and quiz text is cached per model. So quiz work follows the same
+// per-model namespacing the quiz itself has (see modelCacheKey in cache.go):
+// switching models shows that model's quiz with that model's saved answers.
+func storeQuizWork(user, key string, answers []string, feedback string) {
+	key = modelCacheKey(user, key)
+	// Copy the answers under the lock so the map never shares backing storage
+	// with the caller's slice (same discipline as storeChat).
+	cp := make([]string, len(answers))
+	copy(cp, answers)
+	workspaceMu.Lock()
+	if quizzes[user] == nil {
+		quizzes[user] = map[string]QuizWork{}
+	}
+	quizzes[user][key] = QuizWork{Answers: cp, Feedback: feedback}
+	workspaceMu.Unlock()
+	go saveWorkspaces()
+}
+
+// clearQuizWork drops the saved attempt for a quiz. Called when the quiz is
+// regenerated: new questions make the old answers and feedback meaningless.
+func clearQuizWork(user, key string) {
+	key = modelCacheKey(user, key)
+	workspaceMu.Lock()
+	_, existed := quizzes[user][key]
+	delete(quizzes[user], key)
+	workspaceMu.Unlock()
+	if existed {
+		go saveWorkspaces()
+	}
+}
+
+// getQuizWork returns a copy of the saved quiz attempt (zero value if none).
+func getQuizWork(user, key string) QuizWork {
+	key = modelCacheKey(user, key)
+	workspaceMu.RLock()
+	defer workspaceMu.RUnlock()
+	qw := quizzes[user][key]
+	out := make([]string, len(qw.Answers))
+	copy(out, qw.Answers)
+	return QuizWork{Answers: out, Feedback: qw.Feedback}
+}
+
 // getWorkspace returns the saved solution (zero value if none) and a copy of
 // the chat history for the given keys.
 func getWorkspace(user, solutionKey, chatKey string) (Solution, []Message) {
@@ -132,15 +196,20 @@ func getWorkspace(user, solutionKey, chatKey string) (Solution, []Message) {
 // ── Workspace handlers ────────────────────────────────
 //
 // One read endpoint per mode. There are no write endpoints: the server saves
-// work as it flows through the existing evaluate and chat handlers, so the
-// client can't get out of sync with what was actually evaluated or answered.
+// work as it flows through the existing evaluate, chat, and quiz-grade
+// handlers, so the client can't get out of sync with what was actually
+// evaluated, answered, or graded.
 
 // workspaceResp is what the client restores from: the last submitted solution
-// and its feedback for one challenge tier, plus the selection's chat history.
+// and its feedback for one challenge tier, plus the selection's chat history,
+// plus the last graded quiz attempt (fundamentals and tracks only — the quiz
+// fields stay empty for setup and projects, which have no quiz).
 type workspaceResp struct {
-	Code     string    `json:"code"`
-	Feedback string    `json:"feedback"`
-	Chat     []Message `json:"chat"`
+	Code         string    `json:"code"`
+	Feedback     string    `json:"feedback"`
+	Chat         []Message `json:"chat"`
+	QuizAnswers  []string  `json:"quiz_answers,omitempty"`
+	QuizFeedback string    `json:"quiz_feedback,omitempty"`
 }
 
 func handleWorkspace(w http.ResponseWriter, r *http.Request, user string) {
@@ -158,7 +227,9 @@ func handleWorkspace(w http.ResponseWriter, r *http.Request, user string) {
 	sol, chat := getWorkspace(user,
 		challengeCacheKey(req.Lang, req.TopicID, normalizeDifficulty(req.Difficulty)),
 		chatStoreKey(req.Lang, req.TopicID))
-	jsonOK(w, workspaceResp{Code: sol.Code, Feedback: sol.Feedback, Chat: chat})
+	qw := getQuizWork(user, quizCacheKey(req.Lang, req.TopicID))
+	jsonOK(w, workspaceResp{Code: sol.Code, Feedback: sol.Feedback, Chat: chat,
+		QuizAnswers: qw.Answers, QuizFeedback: qw.Feedback})
 }
 
 func handleTrackWorkspace(w http.ResponseWriter, r *http.Request, user string) {
@@ -181,7 +252,9 @@ func handleTrackWorkspace(w http.ResponseWriter, r *http.Request, user string) {
 	sol, chat := getWorkspace(user,
 		trackChallengeCacheKey(req.Lang, req.TrackID, req.LessonID, normalizeDifficulty(req.Difficulty)),
 		trackChatStoreKey(req.Lang, req.TrackID, req.LessonID))
-	jsonOK(w, workspaceResp{Code: sol.Code, Feedback: sol.Feedback, Chat: chat})
+	qw := getQuizWork(user, trackQuizCacheKey(req.Lang, req.TrackID, req.LessonID))
+	jsonOK(w, workspaceResp{Code: sol.Code, Feedback: sol.Feedback, Chat: chat,
+		QuizAnswers: qw.Answers, QuizFeedback: qw.Feedback})
 }
 
 func handleProjectWorkspace(w http.ResponseWriter, r *http.Request, user string) {

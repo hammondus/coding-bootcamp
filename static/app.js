@@ -32,7 +32,9 @@ const S = {
   // Quiz state, keyed by the same selection key as lessons: the raw quiz
   // markdown (the form is rebuilt from it), per-question answer drafts, and
   // the last graded feedback, so all three survive switching topics or tabs
-  // within the session.
+  // within the session. The last GRADED attempt is also saved server-side
+  // and restored by loadWorkspace, so it survives a reload too — ungraded
+  // drafts stay session-only, like editor drafts.
   quizRaw:      {},
   quizAnswers:  {},   // key → [one answer per question]
   quizFeedback: {},   // key → rendered feedback HTML
@@ -488,7 +490,8 @@ async function changeModel(id) {
   // match the selection. Drop the JS content caches and reload — the same
   // clean-slate treatment switching language gets. Editor drafts survive:
   // the student's own code isn't model-specific. Quiz answers don't — they
-  // belong to the old model's questions.
+  // belong to the old model's questions. (Graded attempts are saved per
+  // model server-side, so loadWorkspace restores the right ones after.)
   S.lessons      = {};
   S.challenges   = {};
   S.challengeRaw = {};
@@ -946,7 +949,10 @@ function renderQuizForm(raw) {
         input.type    = 'radio';
         input.name    = `quiz-q-${idx}`;
         input.value   = o.letter;
-        input.checked = saved[idx] === o.letter;
+        // A saved answer is the bare letter while drafting this session, or
+        // the full "A) option text" form submitQuiz sends for grading — which
+        // is what comes back when a graded attempt is restored from the server.
+        input.checked = saved[idx] === o.letter || saved[idx] === `${o.letter}) ${o.text}`;
         input.addEventListener('change', () => { saved[idx] = o.letter; });
         label.appendChild(input);
         label.appendChild(el('span', 'quiz-opt-text', `<strong>${o.letter})</strong> ${parseInline(o.text)}`));
@@ -1034,10 +1040,15 @@ function loadQuiz(force = false) {
         out.innerHTML = parseMarkdown(full);
         return;
       }
-      // Fresh questions mean old answers and feedback no longer apply.
-      S.quizRaw[key]     = full;
-      S.quizAnswers[key] = [];
-      delete S.quizFeedback[key];
+      S.quizRaw[key] = full;
+      // A forced regeneration means fresh questions, so old answers and
+      // feedback no longer apply. Without force this can only be the same
+      // quiz coming back from the server cache, so answers restored from the
+      // saved workspace (see loadWorkspace) must survive.
+      if (force) {
+        S.quizAnswers[key] = [];
+        delete S.quizFeedback[key];
+      }
       if (entry) entry.quizCached = true;
       showQuiz(full);
     }
@@ -1353,11 +1364,12 @@ function loadProjectGuidance(force = false) {
 
 // ── Saved workspace ────────────────────────────
 // The server saves student work as it happens: an evaluation stores the
-// submitted code and its feedback (per challenge tier), and each chat exchange
-// stores the conversation (per topic/lesson/milestone). This fetches that
-// saved work for the current selection and restores it, so a solution, its
-// feedback, and the questions asked around it survive a reload just like the
-// challenge text does.
+// submitted code and its feedback (per challenge tier), each chat exchange
+// stores the conversation (per topic/lesson/milestone), and a quiz grading
+// stores the answers and results. This fetches that saved work for the
+// current selection and restores it, so a solution, its feedback, the
+// questions asked around it, and the last graded quiz all survive a reload
+// just like the challenge text does.
 async function loadWorkspace() {
   if (!hasSelection()) return;
   if (briefSelected()) return; // the project brief has no solution or chat
@@ -1378,6 +1390,31 @@ async function loadWorkspace() {
       S.chatHistory[skey] = ws.chat;
       renderChat();
     }
+
+    // Saved quiz attempt → session state (keyed per selection, like chat).
+    // Answers are only adopted when nothing has been answered this session,
+    // so in-progress answers are never overwritten.
+    let quizRestored = false;
+    if (ws.quiz_answers?.length && !S.quizAnswers[skey]?.length) {
+      S.quizAnswers[skey] = ws.quiz_answers;
+      quizRestored = true;
+    }
+    if (ws.quiz_feedback && !S.quizFeedback[skey]) {
+      // The server stores the feedback as markdown; render it the same way
+      // submitQuiz does before keeping it.
+      const div = el('div', null, parseMarkdown(ws.quiz_feedback));
+      applyHighlight(div);
+      S.quizFeedback[skey] = div.innerHTML;
+      quizRestored = true;
+    }
+    // If the quiz form is already on screen for this selection, rebuild it so
+    // the restored answers and results actually show. (Usually the form isn't
+    // built yet — it's fetched lazily on tab open — and then reads this state
+    // itself.)
+    if (quizRestored && S.quizRaw[skey] && skey === activeCacheKey() && !S.streaming) {
+      restoreQuiz();
+    }
+
     if (ckey !== activeChallengeKey()) return;
 
     // Saved solution → editor, but never overwrite text already there

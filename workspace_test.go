@@ -40,12 +40,15 @@ func TestWorkspaceConcurrentAccess(t *testing.T) {
 					{Role: "user", Content: "question"},
 					{Role: "assistant", Content: fmt.Sprintf("answer %d", i)},
 				})
+				storeQuizWork(user, "go:quiz:1", []string{"A) yes", fmt.Sprintf("try %d", i)}, "graded")
+				clearQuizWork(user, "go:quiz:2") // clearing a key nobody holds must be safe too
 			}
 		}()
 		go func() {
 			defer wg.Done()
 			for range rounds {
 				getWorkspace(user, "go:challenge:1:goat", "go:chat:1")
+				getQuizWork(user, "go:quiz:1")
 			}
 		}()
 	}
@@ -62,6 +65,18 @@ func TestWorkspaceConcurrentAccess(t *testing.T) {
 		if len(chat) != 2 || chat[1].Role != "assistant" {
 			t.Errorf("%s chat = %+v, want 2 messages ending with assistant", user, chat)
 		}
+		qw := getQuizWork(user, "go:quiz:1")
+		wantAns := fmt.Sprintf("try %d", rounds-1)
+		if len(qw.Answers) != 2 || qw.Answers[1] != wantAns || qw.Feedback != "graded" {
+			t.Errorf("%s quiz work = %+v, want 2 answers ending %q", user, qw, wantAns)
+		}
+	}
+
+	// clearQuizWork must actually clear, and getQuizWork must report the
+	// zero value afterwards.
+	clearQuizWork("user0", "go:quiz:1")
+	if qw := getQuizWork("user0", "go:quiz:1"); len(qw.Answers) != 0 || qw.Feedback != "" {
+		t.Errorf("after clear, quiz work = %+v, want empty", qw)
 	}
 
 	// getWorkspace must hand back a copy — mutating it can't touch the map.
@@ -70,5 +85,12 @@ func TestWorkspaceConcurrentAccess(t *testing.T) {
 	_, again := getWorkspace("user0", "go:challenge:1:goat", "go:chat:1")
 	if again[0].Content == "mutated" {
 		t.Error("getWorkspace returned the live chat slice, not a copy")
+	}
+
+	// getQuizWork must hand back a copy of the answers slice as well.
+	qw := getQuizWork("user1", "go:quiz:1")
+	qw.Answers[0] = "mutated"
+	if again := getQuizWork("user1", "go:quiz:1"); again.Answers[0] == "mutated" {
+		t.Error("getQuizWork returned the live answers slice, not a copy")
 	}
 }

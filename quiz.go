@@ -12,7 +12,9 @@ import (
 // choice questions plus two free-response ones, generated FROM the cached
 // lesson just like a challenge is. The quiz is entirely optional — nothing
 // gates on it, and no progress is recorded — it exists so the student can
-// find gaps before the challenge does.
+// find gaps before the challenge does. The last graded attempt (answers +
+// feedback) is saved to the workspace so it survives a reload, the same way
+// an evaluated solution does (see storeQuizWork in workspace.go).
 //
 // The quiz document deliberately contains NO answer key (it is shown to the
 // student verbatim). Grading is a separate call: the browser sends the quiz
@@ -162,6 +164,8 @@ func handleQuiz(w http.ResponseWriter, r *http.Request, user string) {
 
 	streamLLM(r.Context(), w, user, lang.SystemPrompt, prompt, nil, func(full string) {
 		cacheStore(user, key, full)
+		// New questions make any saved attempt at the old quiz meaningless.
+		clearQuizWork(user, key)
 	})
 }
 
@@ -192,8 +196,14 @@ func handleQuizGrade(w http.ResponseWriter, r *http.Request, user string) {
 	prompt := quizGradePrompt(lang.Name, subject, req.Quiz, req.Answers)
 	prompt += lessonContextBlock(user, fmt.Sprintf("%s:lesson:%d", req.Lang, req.TopicID))
 
-	// Grading isn't cached — each attempt is fresh feedback on fresh answers.
-	streamLLM(r.Context(), w, user, lang.SystemPrompt, prompt, nil, nil)
+	// Grading isn't cached — each attempt is fresh feedback on fresh answers —
+	// but the latest graded attempt is saved to the workspace so the answers
+	// and results survive a reload. Only on a clean finish, so an interrupted
+	// grading never overwrites a complete saved one.
+	key := quizCacheKey(req.Lang, req.TopicID)
+	streamLLM(r.Context(), w, user, lang.SystemPrompt, prompt, nil, func(full string) {
+		storeQuizWork(user, key, req.Answers, full)
+	})
 }
 
 // ── Advanced-track quiz handlers ──────────────────────
@@ -238,6 +248,8 @@ func handleTrackQuiz(w http.ResponseWriter, r *http.Request, user string) {
 
 	streamLLM(r.Context(), w, user, lang.SystemPrompt, prompt, nil, func(full string) {
 		cacheStore(user, key, full)
+		// New questions make any saved attempt at the old quiz meaningless.
+		clearQuizWork(user, key)
 	})
 }
 
@@ -269,5 +281,9 @@ func handleTrackQuizGrade(w http.ResponseWriter, r *http.Request, user string) {
 	prompt := quizGradePrompt(lang.Name, subject, req.Quiz, req.Answers)
 	prompt += lessonContextBlock(user, fmt.Sprintf("%s:track:%s:%d", req.Lang, req.TrackID, req.LessonID))
 
-	streamLLM(r.Context(), w, user, lang.SystemPrompt, prompt, nil, nil)
+	// Same as handleQuizGrade: not cached, but the attempt is saved.
+	key := trackQuizCacheKey(req.Lang, req.TrackID, req.LessonID)
+	streamLLM(r.Context(), w, user, lang.SystemPrompt, prompt, nil, func(full string) {
+		storeQuizWork(user, key, req.Answers, full)
+	})
 }
