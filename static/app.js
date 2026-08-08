@@ -214,6 +214,45 @@ function registerZigHighlighting() {
 }
 registerZigHighlighting();
 
+// ── Glide highlighting ─────────────────────────
+// Same deal as Zig: highlight.js has never heard of Glide (nothing has — it's
+// Craig's own language), so register a compact grammar for ```glide fences.
+function registerGlideHighlighting() {
+  if (typeof hljs === 'undefined' || hljs.getLanguage('glide')) return;
+  hljs.registerLanguage('glide', function (hl) {
+    return {
+      name: 'Glide',
+      aliases: ['glide', 'gld'],
+      keywords: {
+        keyword:
+          'fn let mut if else for in match return type struct impl import ' +
+          'yield pub test bench',
+        type: 'Int Float Bool String List Map Result Option Range Iterator Error',
+        literal: 'true false None',
+        built_in: 'print println eprint eprintln expect Ok Err Some',
+      },
+      contains: [
+        // Interpolating string: {expr} inside is highlighted as a template
+        // variable so lesson examples read the way the language means them.
+        {
+          className: 'string', begin: /"/, end: /"/,
+          contains: [
+            { begin: /\\[ntr\\"{}]/ },                       // escapes
+            { className: 'template-variable', begin: /\{/, end: /\}/ },
+          ],
+        },
+        hl.COMMENT('//', '$'),
+        {
+          className: 'number',
+          begin: /\b\d[\d_]*(\.[\d_]+)?\b/,
+          relevance: 0,
+        },
+      ],
+    };
+  });
+}
+registerGlideHighlighting();
+
 // ── Toast ──────────────────────────────────────
 let toastTimer = null;
 function showToast(msg, type = 'info') {
@@ -420,6 +459,9 @@ function applyLangTheme(lang) {
   $('brand-title').textContent = `${lang.name} Bootcamp`;
   $('brand-cmd').textContent   = lang.cmd;
   $('chat-intro-icon').innerHTML = langIconHTML(lang);
+  // ▶ Run only shows where the server can actually execute the code.
+  $('run-btn').classList.toggle('hidden', !lang.canRun);
+  updateEditorHighlight(); // the grammar follows the language
   document.querySelectorAll('.lang-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.lang === lang.id);
   });
@@ -670,6 +712,7 @@ function selectTopic(id, reset = true) {
 
     closeEval();
     $('code-editor').value = '';
+    updateEditorHighlight();
     renderChat();
     loadWorkspace(); // restore saved solution / feedback / chat, if any
   }
@@ -1494,7 +1537,42 @@ function getHint() {
 }
 
 function closeEval()    { $('eval-panel').classList.add('hidden'); $('eval-output').innerHTML = ''; }
-function clearEditor()  { $('code-editor').value = ''; closeEval(); }
+function clearEditor()  { $('code-editor').value = ''; updateEditorHighlight(); closeEval(); }
+
+// ── ▶ Run (languages with a server-side runner — see langCanRun) ──
+// Executes the editor contents with the real interpreter and shows the output
+// in the eval panel, so the student can iterate before submitting. No LLM.
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function runCode() {
+  if (S.streaming || !hasSelection()) return;
+  const code = $('code-editor').value.trim();
+  if (!code) { showToast('Write some code first!', 'error'); return; }
+
+  const out = $('eval-output');
+  $('eval-panel').classList.remove('hidden');
+  out.innerHTML = '<p><strong>▶ Running…</strong></p>';
+
+  try {
+    const resp = await fetch('/api/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lang: S.lang, code }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'run failed');
+    const cls = data.failed ? 'run-failed' : 'run-ok';
+    const mark = data.failed ? '✗' : '✓';
+    out.innerHTML =
+      '<p><strong>▶ Output</strong></p>' +
+      `<pre><code>${escapeHtml(data.output || '(no output)')}</code></pre>` +
+      `<p class="run-status ${cls}">${mark} ${escapeHtml(data.result)}</p>`;
+  } catch (e) {
+    out.innerHTML = `<p><strong>▶ Run</strong></p><p>${escapeHtml(e.message)}</p>`;
+  }
+}
 
 // ── Chat ───────────────────────────────────────
 function getChatHistory() {
@@ -1591,6 +1669,47 @@ async function toggleComplete() {
 function autoResize(el) {
   el.style.height = 'auto';
   el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+  // Every code-editor change comes through here (typing and the programmatic
+  // value-sets, which all call autoResize) — refresh the highlight mirror.
+  if (el.id === 'code-editor') updateEditorHighlight();
+}
+
+// ── Editor syntax highlighting ─────────────────
+// The textarea's text is transparent; a <pre><code> mirror behind it carries
+// the colors (markup in index.html, geometry rules in style.css). This keeps
+// the editor a plain textarea — undo, IME, selection all native — with no
+// editor library.
+
+// Which highlight.js grammar colors each language's editor. Anything not
+// listed (or not registered) falls back to plain uncolored text.
+const editorGrammar = {
+  go: 'go', zig: 'zig', glide: 'glide',
+  javascript: 'javascript', html: 'xml', css: 'css',
+  git: 'bash', claude: 'markdown',
+};
+
+function updateEditorHighlight() {
+  const wrap = $('editor-wrap');
+  const code = $('editor-highlight-code');
+  const lang = editorGrammar[S.lang];
+  if (typeof hljs === 'undefined' || !lang || !hljs.getLanguage(lang)) {
+    wrap.classList.add('plain');
+    code.textContent = '';
+    return;
+  }
+  wrap.classList.remove('plain');
+  const text = $('code-editor').value;
+  // A <pre> swallows a trailing newline; pad with a space so the mirror keeps
+  // the same height as the textarea and the caret's last line stays aligned.
+  code.innerHTML = hljs.highlight(text, { language: lang, ignoreIllegals: true }).value
+    + (text.endsWith('\n') ? ' ' : '');
+  syncEditorScroll();
+}
+
+function syncEditorScroll() {
+  const ta = $('code-editor'), hl = $('editor-highlight');
+  hl.scrollTop = ta.scrollTop;
+  hl.scrollLeft = ta.scrollLeft;
 }
 
 function setupEditorTab() {
@@ -1600,8 +1719,10 @@ function setupEditorTab() {
       const ta = e.target, s = ta.selectionStart, en = ta.selectionEnd;
       ta.value = ta.value.slice(0, s) + '\t' + ta.value.slice(en);
       ta.selectionStart = ta.selectionEnd = s + 1;
+      updateEditorHighlight(); // direct value-set fires no input event
     }
   });
+  $('code-editor').addEventListener('scroll', syncEditorScroll);
 }
 
 // Let the user drag the top edge of the Feedback panel to resize it.

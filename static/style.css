@@ -638,24 +638,74 @@ textarea, input { font-family: var(--font-mono); }
   flex: 1;
 }
 
-.code-editor {
+/* The editor is two stacked layers: a highlight.js-colored <pre> mirror
+   behind, and the real textarea in front with transparent text so only the
+   colored copy shows (the caret and selection stay the textarea's). Both
+   layers MUST share identical font, padding, line-height, tab-size, and
+   wrapping, or the caret drifts off the letters. When the language has no
+   grammar the wrap gets .plain: mirror hidden, textarea text visible. */
+.editor-wrap {
+  position: relative;
   flex: 1;
-  width: 100%;
+  display: flex;
+  overflow: hidden;
   background: #080d14;
-  color: #c9d1e0;
-  border: none;
-  outline: none;
+}
+
+.code-editor,
+.editor-highlight {
   padding: 16px 18px;
   font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.65;
-  resize: none;
   tab-size: 4;
   -moz-tab-size: 4;
+  white-space: pre-wrap;      /* textarea soft-wraps; the mirror must too */
+  word-wrap: break-word;
+}
+
+.code-editor {
+  flex: 1;
+  width: 100%;
+  background: transparent;
+  color: transparent;
+  border: none;
+  outline: none;
+  resize: none;
   caret-color: var(--accent);
+  position: relative;         /* above the mirror */
+  z-index: 1;
+}
+.editor-wrap.plain .code-editor { color: #c9d1e0; }
+
+.editor-highlight {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  overflow: hidden;           /* scrolled programmatically to match the textarea */
+  pointer-events: none;
+}
+.editor-wrap.plain .editor-highlight { display: none; }
+/* github-dark's .hljs sets its own background/foreground — neutralise both so
+   the editor chrome shows through and untinted tokens match the old color. */
+.editor-highlight code.hljs {
+  display: block;
+  padding: 0;
+  background: transparent;
+  color: #c9d1e0;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: inherit;
+  word-wrap: inherit;
 }
 
 .code-editor::placeholder { color: var(--text3); }
+
+/* ▶ Run result, shown in the eval panel under the program output. */
+.run-status            { font-weight: 600; }
+.run-status.run-ok     { color: #3fb950; }
+.run-status.run-failed { color: #f85149; }
 
 .editor-actions {
   display: flex;

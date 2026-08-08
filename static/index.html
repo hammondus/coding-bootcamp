@@ -239,12 +239,20 @@
               </div>
               <span class="editor-label">solution</span>
             </div>
-            <textarea id="code-editor" class="code-editor"
-                      placeholder="// Write your solution here…"
-                      oninput="autoResize(this)"
-                      spellcheck="false"></textarea>
+            <!-- The highlight layer sits behind the textarea and mirrors its
+                 text through highlight.js; the textarea's own text is
+                 transparent so only the colored copy shows (see
+                 updateEditorHighlight in app.js). -->
+            <div class="editor-wrap" id="editor-wrap">
+              <pre class="editor-highlight" id="editor-highlight" aria-hidden="true"><code id="editor-highlight-code" class="hljs"></code></pre>
+              <textarea id="code-editor" class="code-editor"
+                        placeholder="// Write your solution here…"
+                        oninput="autoResize(this)"
+                        spellcheck="false"></textarea>
+            </div>
             <div class="editor-actions">
               <button class="btn-ghost"      onclick="clearEditor()">Clear</button>
+              <button class="btn-secondary hidden" id="run-btn" onclick="runCode()">▶ Run</button>
               <button class="btn-secondary"  onclick="getHint()">💡 Hint</button>
               <button class="btn-primary"    onclick="submitCode()">Submit ↵</button>
             </div>

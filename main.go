@@ -28,6 +28,7 @@ func main() {
 	loadHintsUsed()
 	loadWorkspaces()
 	loadUserModels()
+	initGlide() // load Glide's reference docs + interpreter, or hide Glide (glide.go)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -58,6 +59,7 @@ func main() {
 	http.HandleFunc("/api/quiz/grade", requireAuth(handleQuizGrade))
 	http.HandleFunc("/api/challenge", requireAuth(handleChallenge))
 	http.HandleFunc("/api/evaluate", requireAuth(handleEvaluate))
+	http.HandleFunc("/api/run", requireAuth(handleRunCode)) // ▶ Run — interpreter only, no LLM (glide.go)
 	http.HandleFunc("/api/hint", requireAuth(handleHint))
 	http.HandleFunc("/api/hints-viewed", requireAuth(handleHintsViewed))
 	http.HandleFunc("/api/chat", requireAuth(handleChat))

@@ -88,7 +88,7 @@ type Category struct {
 // To add a language: define its var below, add it to the languages map, and list
 // its ID in the appropriate category here.
 var categories = []Category{
-	{ID: "backend", Name: "Backend", Langs: []string{"go", "zig"}},
+	{ID: "backend", Name: "Backend", Langs: []string{"go", "zig", "glide"}},
 	{ID: "frontend", Name: "Frontend", Langs: []string{"javascript", "html", "css"}},
 	// "Development" holds craft courses that aren't tied to one programming
 	// language: code management (git) and AI-assisted development (claude).
@@ -98,6 +98,7 @@ var categories = []Category{
 var languages = map[string]Language{
 	"go":         goLanguage,
 	"zig":        zigLanguage,
+	"glide":      glideLanguage,
 	"javascript": javascriptLanguage,
 	"html":       htmlLanguage,
 	"css":        cssLanguage,
@@ -217,6 +218,81 @@ Style reminder: Zig uses snake_case for variables and function names, PascalCase
 			Skills: "zig init layout, build.zig at a glance, test blocks, std.testing.expect / expectEqual / expectError, zig test"},
 	},
 	Tracks: zigTracks,
+}
+
+// ── Glide ─────────────────────────────────────────────
+//
+// Glide is Craig's own language, developed in a sibling repo — no model knows
+// it from training. This SystemPrompt is only the instructor preamble: at
+// startup, initGlide (glide.go) appends the complete language + stdlib
+// reference from the Glide repo, which is the model's entire knowledge of the
+// language. If those docs can't be loaded, Glide is removed from the registry
+// and never appears in the UI.
+
+var glideLanguage = Language{
+	ID:          "glide",
+	Name:        "Glide",
+	Icon:        "/static/icons/glide.svg",
+	Cmd:         "$ glide run main.gld",
+	AccentColor: "#8B5CF6",
+	AccentDark:  "#6D28D9",
+	AccentGlow:  "rgba(139,92,246,0.15)",
+	CodeLabel:   "GLIDE",
+	StyleNote:   "One targeted tip on Glide idiom: tail expression over return, plain let over let mut where possible, ? propagation over matching on Result, or naming (snake_case bindings and functions, Capitalised types and variants).",
+	StarterTemplate: "```glide\nfn main() {\n    // Your solution here\n}\n```",
+	SystemPrompt: `You are an expert Glide programming instructor running a hands-on bootcamp.
+You teach Glide clearly, practically, and engagingly. You are patient and encouraging.
+Format all responses in Markdown. Use triple-backtick glide fences for all Glide code examples.
+Be concise but thorough. Include practical, real-world examples.
+
+CRITICAL — Glide is a brand-new language and is NOT in your training data.
+Everything you know about Glide is in the reference attached below; it is the
+only source of truth. Never guess syntax, methods, or idioms from Rust, Go,
+Swift, or any other language — if the reference doesn't say it exists, it
+doesn't exist. In the reference, ✓ marks features that work in today's
+interpreter and ○ marks features that are designed but NOT yet implemented:
+teach and use ONLY ✓ features in code examples, challenges, and requirements.
+You may mention an ○ feature in prose as "designed, coming later", never in code.
+
+Habits from other languages that are WRONG in Glide: no semicolons; no ++ or
+-- (use += 1); no *= or /= yet; no ternary (if/else is an expression); no
+null, nil, or zero values; no break or continue yet (restructure the loop);
+strings cannot be indexed with s[i]; match arms cannot use literal patterns
+like 1 => yet (use guards: n if n == 1 =>); assignment is a statement, not an
+expression. A function's tail expression is its return value — return is only
+for early exit.
+Style reminder: snake_case for bindings, functions, and fields; Capitalised for types, variants, and constructors. Flag naming issues if you see them.`,
+	// The sequence teaches expression-orientation (tail values) in topic 3,
+	// unusually early, because it is the single biggest habit-breaker for
+	// students from statement languages — every later topic depends on
+	// reading blocks as values. Loops carry a "no break/continue yet"
+	// warning in their skills line so challenges never require them.
+	Topics: []Topic{
+		{ID: 1, Name: "Program Structure",
+			Skills: "fn main() { }, running with glide run file.gld; println / print and always-interpolating strings \"{expr}\" (width {n:6}); // comments (the only comment form); no semicolons — a newline ends a statement; braces mandatory on every block"},
+		{ID: 2, Name: "Bindings & Simple Types",
+			Skills: "let (immutable, the default) and let mut for reassignment; sequential redeclare in the same scope is idiomatic, nested shadowing of a live outer name is an error; Int (underscores: 10_000), Float, Bool, String; no zero values — every binding is initialised; arithmetic + - * / %, compound += and -= only (no *= or /=, no ++ or --)"},
+		{ID: 3, Name: "Everything Is an Expression",
+			Skills: "if / else if / else; if as an expression (both arms required in value position); bare blocks { } yield their tail value and scope their locals; a function's tail expression IS its return value, return is only for early exit; discarding a value explicitly with _ = expr"},
+		{ID: 4, Name: "Functions",
+			Skills: "fn name(param: Type, …) -> Ret { } with full signatures; no arrow = returns nothing, and ending such a fn with a meaningful value is an error (discard with _ =); calling; early return; functions are top-level only (no nested fn yet); no overloading, no variadics — ever"},
+		{ID: 5, Name: "Lists",
+			Skills: "list literals [1, 2, 3] and empty []; xs[i] indexing (panics out of bounds); .len(); .push(v) appends and requires a mut path; .sorted() returns a copy, .sort_by(cmp) sorts in place with a three-way comparator; destructuring let [first, ..rest] = xs"},
+		{ID: 6, Name: "Loops & Ranges",
+			Skills: "for { } (forever), for cond { } (while-style), for x in xs; ranges lo..hi (half-open, Int only); fresh binding each iteration; break and continue do NOT exist yet — shape loops with conditions and early return instead"},
+		{ID: 7, Name: "Tuples & Maps",
+			Skills: "tuples (a, b), fields .0 / .1, destructuring let (a, b) = pair; maps: empty [:] needs a type annotation, m[k] = v inserts or updates (needs mut), m[k] returns an optional — pair it with ?? for a default; .len(), .entries(); insertion order preserved; for (k, v) in m"},
+		{ID: 8, Name: "Structs & Methods",
+			Skills: "type Name = struct { field: Type, … }; construction Name{ field: value, … } with every field mandatory (no zero values); .field access; impl Name { fn method(self) -> T { } }; mut self receivers require a mut call path; calling methods"},
+		{ID: 9, Name: "Sum Types, Match & Option",
+			Skills: "type Shape = Circle(Float) | Square(Float); match as an expression, arms pattern => expr (block expression for multi-statement arms), wildcard _, guards n if n < 0 => (literal patterns like 1 => don't exist yet — use guards); exhaustiveness on sum types; Option T?: Some(v) / None, if let Some(x) = opt, ?? coalescing"},
+		{ID: 10, Name: "Errors as Values",
+			Skills: "Result<T, E>, Ok(v) / Err(e); ? propagates the Err to the caller; matching Ok / Err; .context(msg) breadcrumbs; let PATTERN = expr else { } where the else must diverge; panics are for bugs and cannot be caught; import fs + fs.read_string(path) as the canonical Result source"},
+		{ID: 11, Name: "Closures, Iterators & Generators",
+			Skills: "closures |x| expr, |x| { }, and || for no args; capture by reference and by binding; .iter(), .take(n), .collect(); generators: any fn containing yield returns an Iterator when called, yield from delegates; laziness — nothing runs until consumed (adapter methods like map/filter don't exist yet — use for loops)"},
+		{ID: 12, Name: "Testing & Small Programs",
+			Skills: "test \"name\" { } blocks run with glide test file.gld; expect(cond) reports both sides of a failed comparison and continues; property tests test \"n\" (xs: List<Int>) { } — 100 generated cases with shrinking; import os + os.args() (program name first) and os.exit(code)"},
+	},
 }
 
 // ── JavaScript ────────────────────────────────────────

@@ -167,6 +167,9 @@ func handleLanguages(w http.ResponseWriter, r *http.Request) {
 		AccentDark  string `json:"accentDark"`
 		AccentGlow  string `json:"accentGlow"`
 		CodeLabel   string `json:"codeLabel"`
+		// True when the ▶ Run button can execute this language server-side
+		// (today: Glide with its interpreter present — see langCanRun).
+		CanRun bool `json:"canRun"`
 	}
 	type CatMeta struct {
 		ID        string     `json:"id"`
@@ -187,6 +190,7 @@ func handleLanguages(w http.ResponseWriter, r *http.Request) {
 				AccentDark:  l.AccentDark,
 				AccentGlow:  l.AccentGlow,
 				CodeLabel:   l.CodeLabel,
+				CanRun:      langCanRun(l.ID),
 			})
 		}
 		result = append(result, cm)
@@ -467,6 +471,17 @@ func handleEvaluate(w http.ResponseWriter, r *http.Request, user string) {
 	}
 	challengeKey := challengeCacheKey(req.Lang, req.TopicID, normalizeDifficulty(req.Difficulty))
 
+	// Most languages can't be executed here, so the model judges by eye.
+	// Glide is the exception: its interpreter lives in the sibling repo, so
+	// the submission is run for real and the output goes into the prompt as
+	// ground truth (see glideRunBlock).
+	execNote := "Note: code cannot be executed — evaluate on logic and conventions."
+	if req.Lang == "glide" {
+		if block := glideRunBlock(r.Context(), req.Code); block != "" {
+			execNote = block
+		}
+	}
+
 	prompt := fmt.Sprintf(`Evaluate this %s code submission for Topic %d: **%s**.
 
 **The Challenge**:
@@ -506,13 +521,14 @@ Stretch goals are optional extras: never fail or penalize a submission for skipp
 them. If the student attempted one, evaluate the attempt and celebrate it in
 **What Works Well**.
 
-Be encouraging and educational. Note: code cannot be executed — evaluate on logic and conventions.`,
+Be encouraging and educational. %s`,
 		lang.Name, topic.ID, topic.Name,
 		req.Challenge,
 		lang.ID, req.Code,
 		lang.Name,
 		lang.Name, lang.StyleNote,
-		topicSkillsBlock(lang, topic.ID))
+		topicSkillsBlock(lang, topic.ID),
+		execNote)
 	prompt += lessonContextBlock(user, fmt.Sprintf("%s:lesson:%d", req.Lang, req.TopicID))
 	prompt += hintUsageBlock(user, challengeKey)
 
