@@ -1667,11 +1667,18 @@ async function toggleComplete() {
 
 // ── Helpers ────────────────────────────────────
 function autoResize(el) {
+  // The code editor is sized by flex, not by its content. Its wrap is a ROW
+  // flex container (for the highlight mirror), where an inline height defeats
+  // align-items:stretch and pins the textarea to ≤160px — the mirror keeps
+  // painting the full pane, so clicks below the cap hit nothing and the lower
+  // lines can't be reached. Clear any stale height and just refresh the mirror.
+  if (el.id === 'code-editor') {
+    el.style.height = '';
+    updateEditorHighlight();
+    return;
+  }
   el.style.height = 'auto';
   el.style.height = Math.min(el.scrollHeight, 160) + 'px';
-  // Every code-editor change comes through here (typing and the programmatic
-  // value-sets, which all call autoResize) — refresh the highlight mirror.
-  if (el.id === 'code-editor') updateEditorHighlight();
 }
 
 // ── Editor syntax highlighting ─────────────────
