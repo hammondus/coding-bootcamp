@@ -2,7 +2,7 @@
 
 A personalised coding bootcamp that teaches to code in various languages.
 Currently it covers:
-- Backend languages Go and Zig
+- Backend languages Go, Zig and [Glide](https://github.com/hammondus/glide)
 - Frontend. HTML, CSS and Javascript
 - Development. Claude (AI-assisted development) and Git & CI/CD (code management with git, GitHub and GitHub Actions)
 
@@ -33,6 +33,24 @@ Based on the skills taught in previous sections, build a specific complete proje
 The course structure is hard coded.
 The lesson/challenge content is generated on the fly by whatever AI model has been chosen.
 This content is cached, so it will survive a server restart.
+
+## Glide
+
+[Glide](https://github.com/hammondus/glide) is a brand-new language developed
+in a sibling repo, so no AI model knows it from training. The bootcamp handles
+it differently from every other language:
+
+- Its complete language and stdlib reference is read from the Glide repo
+  (`GLIDE_REPO`, default `../glide`) at startup and given to the model with
+  every request — the docs *are* the model's knowledge of Glide. If the repo
+  isn't there, Glide simply doesn't appear in the UI.
+- Cached lessons are tied to the version of the docs they were generated
+  from, so when the language changes, content regenerates instead of teaching
+  last month's Glide.
+- Glide is the only language where code actually runs: a ▶ Run button in the
+  challenge editor executes your solution with the real interpreter, and
+  evaluations judge your submission against its actual output rather than by
+  eye. Build the interpreter first: `make -C ../glide/glide build`.
 
 # Security
 This is not suitable for public access. While there is a user logon screen, there are no limits on who can sign up and how much they can use the system, so someone could use up an unlimited amount of API data.
